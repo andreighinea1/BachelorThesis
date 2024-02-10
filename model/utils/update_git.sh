@@ -7,4 +7,4 @@ cd "$(dirname "$0")"
 git pull
 
 # Install packages directly into the py312 environment
-conda install --yes --name py312 --file requirements.txt
+conda install --yes --name py312 -c conda-forge --file requirements.txt
