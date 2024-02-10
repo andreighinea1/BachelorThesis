@@ -6,5 +6,5 @@ cd "$(dirname "$0")"
 # Execute the rest of the commands
 git pull
 
-conda activate py312
-conda install --yes --file requirements.txt
+# Install packages directly into the py312 environment
+conda install --yes --name py312 --file requirements.txt
