@@ -1,0 +1,25 @@
+Automatic Emotion Recognition from EEG Signals Using a Combination of Type-2 Fuzzy and Deep Convolutional Networks:
+	- Preprocessing:
+		- Notch Filter
+		- Butterworth Filter
+		- Segmentation
+		- Data Augmentation (try with GAN)
+	- model (CNN):
+		- Using type-2 fuzzy functions as the activation function of a convolutional layer. These are used to design systems with high uncertainty and complexity.
+		- Using large filters in the first layer
+		- Using small filters in the middle layer
+	- Training:
+		- Search for many parameter combinations in a search space:
+			Optimizer
+			Loss function
+			Number of Convolution layers
+			Number of FC layers
+			Number of Filters in the [1st, 2nd, other] convolution layer
+			Activation Function
+			Size of filter in the [1st, other] convolution layer
+			Dropout rate
+			Batch size
+			Learning rate
+	- THOUGHTS:
+		- Try to train a larger CNN, then get output from intermediary layers, see if it's better than completely shrinking the model (do that dynamically).
+		
