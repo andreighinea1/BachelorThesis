@@ -1,18 +1,19 @@
 import os
 import random
 import re
-from collections import defaultdict
 from datetime import datetime
-from typing import Dict, Optional
+from typing import Optional, Dict
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from scipy.io import loadmat
+from tqdm.auto import tqdm
 
 
 class SeedDatasetLoader:
-    fs = 200  # 200Hz
+    fs = 200  # Sampling frequency of 200Hz
+    file_pattern = re.compile(r"(\d+)_(\d+)\.mat")
 
     def __init__(self, *,
                  preprocessed_eeg_dir="datasets/SEED/Preprocessed_EEG",
@@ -20,63 +21,60 @@ class SeedDatasetLoader:
         self.preprocessed_eeg_dir = preprocessed_eeg_dir
         self.channel_order_filepath = channel_order_filepath
 
-        # Initialize data structures
-        self.experiment_dates: Dict[int, Dict[int, datetime]] = defaultdict(dict)
-        self.subjects_data: Dict[int, Dict[int, Dict[int, np.ndarray]]] = defaultdict(dict)
-        """
-        Subject No: {
-          Experiment Date Repetition No (repeated 3 times): {
-            djc_eeg1...djc_eeg15: EEG of shape (62, X)
-              // 62 channels
-              // X length frames with frequency 200Hz
-          }
-        }
-        """
-        self.experiment_prefixes: Dict[int, Dict[int, Dict[int, str]]] = defaultdict(lambda: defaultdict(dict))
+        # DataFrame to store EEG data
+        self.eeg_data_df = pd.DataFrame()
 
-        self.labels = None
+        # Load channel order
         self.channel_order: Optional[Dict[int, str]] = None
-
-        self.file_pattern = re.compile(r"(\d+)_(\d+)\.mat")
         self._load_channel_order()
+
+        # Load EEG data and labels into DataFrame
+        self.labels = None
         self._load_eeg_data()
 
     def _load_eeg_data(self):
-        _initial_subjects_data = defaultdict(list)
+        # Temporary storage list for DataFrame creation
+        data_records = []
 
         # Load all files in the preprocessed_eeg_dir
-        for filename in os.listdir(self.preprocessed_eeg_dir):
+        for filename in tqdm(os.listdir(self.preprocessed_eeg_dir), desc="Going through files"):
             if filename == "label.mat":
                 self.labels = self._load_mat_file(filename)["label"]
             else:
-                self._process_file(filename, _initial_subjects_data)
+                self._process_file(filename, data_records)
 
-        # Convert lists to dicts, making experiment_rep start from 1, and handle keys
-        for subject, data_list in _initial_subjects_data.items():
-            sorted_data = sorted(data_list, key=lambda x: x[0])  # Sort by datetime
-            self.experiment_dates[subject] = {i + 1: d[0] for i, d in enumerate(sorted_data)}
+        # Create DataFrame from records
+        self.eeg_data_df = pd.DataFrame(data_records, columns=[
+            "Subject", "Trial", "Trial_Prefix", "Date", "EEG"
+        ])
+        self.eeg_data_df = self.eeg_data_df.sort_values(by=[
+            "Subject", "Trial", "Date"
+        ])
 
-            formatted_data = defaultdict(dict)
-            for i, (_, data_dict) in enumerate(sorted_data):
-                for key, value in data_dict.items():
-                    if "_eeg" in key:
-                        prefix, num = key.split('_eeg')
-                        self.experiment_prefixes[subject][i + 1][int(num)] = prefix
-                        formatted_data[i + 1][int(num)] = value
-            self.subjects_data[subject] = dict(formatted_data)
+        # Add "Trial_Rep" by counting occurrences of each combination of Subject and Trial
+        self.eeg_data_df["Trial_Rep"] = self.eeg_data_df.groupby(["Subject", "Trial"]).cumcount() + 1
+        self.eeg_data_df = self.eeg_data_df[[
+            "Subject", "Trial", "Trial_Prefix", "Trial_Rep", "Date", "EEG"
+        ]]
 
-        self.subjects_data = dict(self.subjects_data)
-        self.experiment_dates = dict(self.experiment_dates)
-
-    def _process_file(self, filename, _initial_subjects_data: Dict[int, list]):
+    def _process_file(self, filename, data_records):
         match = self.file_pattern.match(filename)
         if match:
-            subject_number = int(match.group(1))
+            subject_nr = int(match.group(1))
             date_str = match.group(2)
             date_obj = datetime.strptime(date_str, "%Y%m%d")
-            data: Dict[str, np.ndarray] = self._load_mat_file(filename)
-            # Append to list, to be converted to dict later
-            _initial_subjects_data[subject_number].append((date_obj, data))
+            data = self._load_mat_file(filename)
+
+            for key, value in data.items():
+                if "_eeg" in key:
+                    prefix, trial_nr = key.split("_eeg")
+                    data_records.append({
+                        "Subject": subject_nr,
+                        "Trial": int(trial_nr),
+                        "Trial_Prefix": prefix,
+                        "Date": date_obj,
+                        "EEG": value
+                    })
 
     def _load_mat_file(self, filename):
         file_path = os.path.join(self.preprocessed_eeg_dir, filename)
@@ -87,12 +85,9 @@ class SeedDatasetLoader:
         return
 
     def plot_random_eeg(self):
-        # Select a random EEG
-        random_eeg = self.get_subject_data(
-            subject_no=random.randint(1, 15),
-            experiment_rep=random.randint(1, 3),
-            experiment_no=random.randint(1, 15),
-        )
+        # Randomly select an EEG
+        random_row = self.eeg_data_df.sample(n=1).iloc[0]
+        random_eeg = random_row["EEG"]
         random_channel = random.randint(0, 61)
 
         # Create a time array based on the number of samples and the sampling rate
@@ -101,17 +96,24 @@ class SeedDatasetLoader:
         # Plotting
         plt.figure(figsize=(15, 5), dpi=150)
         plt.plot(time, random_eeg[random_channel, :])
-        plt.title(f"EEG Channel {random_channel + 1}")
+        plt.title(
+            f"EEG Channel {random_channel + 1} - "
+            f"Subject {random_row['Subject']}, "
+            f"Trial {random_row['Trial_Prefix']}, "
+            f"Rep {random_row['Trial_Rep']} ({random_row['Date']})"
+        )
         plt.xlabel("Time (seconds)")
         plt.ylabel("Amplitude")
         plt.grid(True)
         plt.show()
 
-    def get_subject_data(self, subject_no: int, experiment_rep: int, experiment_no: int):
-        data = self.subjects_data[subject_no]
-        data = data[experiment_rep]
-        data = data[experiment_no]
-        return data
+    def get_subject_data(self, subject_nr: int, trial_nr: int, trial_rep: int):
+        data = self.eeg_data_df[
+            (self.eeg_data_df["Subject"] == subject_nr) &
+            (self.eeg_data_df["Trial"] == trial_nr) &
+            (self.eeg_data_df["Trial_Rep"] == trial_rep)
+            ]
+        return data.iloc[0]["EEG"] if not data.empty else None
 
     def get_labels(self) -> np.ndarray:
         return self.labels
