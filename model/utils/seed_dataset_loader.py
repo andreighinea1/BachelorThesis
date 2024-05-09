@@ -12,14 +12,19 @@ from tqdm.auto import tqdm
 
 
 class SeedDatasetLoader:
-    fs = 200  # Sampling frequency of 200Hz
     file_pattern = re.compile(r"(\d+)_(\d+)\.mat")
 
-    def __init__(self, *,
-                 preprocessed_eeg_dir="datasets/SEED/Preprocessed_EEG",
-                 channel_order_filepath="datasets/SEED/channel-order.xlsx"):
+    def __init__(
+            self, *,
+            preprocessed_eeg_dir="datasets/SEED/Preprocessed_EEG",
+            channel_order_filepath="datasets/SEED/channel-order.xlsx",
+            seconds_per_eeg=1,
+            fs=200,  # Sampling frequency of 200Hz
+    ):
         self.preprocessed_eeg_dir = preprocessed_eeg_dir
         self.channel_order_filepath = channel_order_filepath
+        self.seconds_per_eeg = seconds_per_eeg
+        self.fs = fs
 
         # DataFrame to store EEG data
         self.eeg_data_df = pd.DataFrame()
