@@ -23,8 +23,8 @@ class SeedDatasetLoader:
     ):
         self.preprocessed_eeg_dir = preprocessed_eeg_dir
         self.channel_order_filepath = channel_order_filepath
-        self.seconds_per_eeg = seconds_per_eeg
         self.fs = fs
+        self.window_size = seconds_per_eeg * self.fs
 
         # DataFrame to store EEG data
         self.eeg_data_df = pd.DataFrame()
@@ -50,16 +50,17 @@ class SeedDatasetLoader:
 
         # Create DataFrame from records
         self.eeg_data_df = pd.DataFrame(data_records, columns=[
-            "Subject", "Trial", "Trial_Prefix", "Date", "EEG"
+            "Subject", "Trial", "Trial_Prefix",
+            "Date", "Start_Frame", "EEG",
         ])
-        self.eeg_data_df = self.eeg_data_df.sort_values(by=[
-            "Subject", "Trial", "Date"
-        ])
+        self.eeg_data_df.sort_values(by=["Subject", "Trial", "Date"], inplace=True)
 
         # Add "Trial_Rep" by counting occurrences of each combination of Subject and Trial
         self.eeg_data_df["Trial_Rep"] = self.eeg_data_df.groupby(["Subject", "Trial"]).cumcount() + 1
         self.eeg_data_df = self.eeg_data_df[[
-            "Subject", "Trial", "Trial_Prefix", "Trial_Rep", "Date", "EEG"
+            "Subject", "Trial", "Trial_Prefix",
+            "Trial_Rep",
+            "Date", "Start_Frame", "EEG",
         ]]
 
     def _process_file(self, filename, data_records):
@@ -73,13 +74,20 @@ class SeedDatasetLoader:
             for key, value in data.items():
                 if "_eeg" in key:
                     prefix, trial_nr = key.split("_eeg")
-                    data_records.append({
-                        "Subject": subject_nr,
-                        "Trial": int(trial_nr),
-                        "Trial_Prefix": prefix,
-                        "Date": date_obj,
-                        "EEG": value
-                    })
+                    num_segments = value.shape[1] // self.window_size
+                    for i in range(num_segments):
+                        start_frame = i * self.window_size
+                        end_frame = start_frame + self.window_size
+
+                        eeg_segment = value[:, start_frame:end_frame]
+                        data_records.append({
+                            "Subject": subject_nr,
+                            "Trial": int(trial_nr),
+                            "Trial_Prefix": prefix,
+                            "Date": date_obj,
+                            "Start_Frame": start_frame,
+                            "EEG": eeg_segment
+                        })
 
     def _load_mat_file(self, filename):
         file_path = os.path.join(self.preprocessed_eeg_dir, filename)
