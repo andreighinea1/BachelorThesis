@@ -113,7 +113,8 @@ class SeedDatasetLoader:
             f"EEG Channel {random_channel + 1} - "
             f"Subject {random_row['Subject']}, "
             f"Trial {random_row['Trial_Prefix']}, "
-            f"Rep {random_row['Trial_Rep']} ({random_row['Date']})"
+            f"Rep {random_row['Trial_Rep']} ({random_row['Date'].strftime('%Y%m%d')}), "
+            f"Start_Frame {random_row['Start_Frame']}"
         )
         plt.xlabel("Time (seconds)")
         plt.ylabel("Amplitude")
