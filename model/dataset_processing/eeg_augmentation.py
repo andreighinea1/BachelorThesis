@@ -100,11 +100,11 @@ class EEGAugmentation:
             x = torch.tensor(row["EEG"], dtype=torch.float32)
 
             # Time domain augmentation
-            xe = self._time_gaussian_noise(x)
+            xa = self._time_gaussian_noise(x)
 
             # Frequency domain augmentation
             xF = self._freq_fourier_transform(x)
-            xeF = self._freq_spectral_perturbation(xF)
+            xFa = self._freq_spectral_perturbation(xF)
 
             augmented_data.append({
                 "Subject": row["Subject"],
@@ -115,9 +115,9 @@ class EEGAugmentation:
                 "Start_Frame": row["Start_Frame"],
 
                 "EEG": x,  # Original EEG (but in torch format)
-                "EEG_Time_Augmented": xe,  # Time Augmented EEG
+                "EEG_Time_Augmented": xa,  # Time Augmented EEG
                 "EEG_Frequency": xF,  # Frequency domain representation
-                "EEG_Frequency_Augmented": xeF,  # Frequency Augmented EEG
+                "EEG_Frequency_Augmented": xFa,  # Frequency Augmented EEG
             })
 
         # Create a new DataFrame with the augmented data
