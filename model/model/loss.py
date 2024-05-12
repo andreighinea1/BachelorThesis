@@ -28,20 +28,22 @@ class NTXentLoss:
         Returns:
             torch.Tensor: The average NT-Xent loss for the batch.
         """
-        device = a.device
-        batch_size = a.size(0)
+
+        if a.size() != b.size():
+            raise ValueError(f"Embeddings must have the same number of embeddings:\n"
+                             f"{a.size()} != {b.size()}")
 
         # Normalize the embeddings to use cosine similarity
-        a = F.normalize(a, p=2, dim=1).to(device)
-        b = F.normalize(b, p=2, dim=1).to(device)
+        a = F.normalize(a, p=2, dim=-1).to(a.device)
+        b = F.normalize(b, p=2, dim=-1).to(a.device)
 
         # Calculate the cosine similarity between each original and its augmented version (positive pairs)
         # Already normalized, so no need to divide `a * b` by anything
-        positive_sim = torch.sum(a * b, dim=1) / self.temperature
+        positive_sim = torch.sum(a * b, dim=-1) / self.temperature
 
         # Calculate cosine similarity between each original and all other originals (negative pairs)
-        logsumexp_negatives_a = self.calculate_logsumexp_negatives(a, a.t(), batch_size, device)
-        logsumexp_negatives_b = self.calculate_logsumexp_negatives(a, b.t(), batch_size, device)
+        logsumexp_negatives_a = self.calculate_logsumexp_negatives(a, a)
+        logsumexp_negatives_b = self.calculate_logsumexp_negatives(a, b)
 
         # Calculate log probabilities for the positives in relation to the negative similarities
         log_prob = positive_sim - logsumexp_negatives_a - logsumexp_negatives_b
@@ -51,7 +53,7 @@ class NTXentLoss:
 
         return loss
 
-    def calculate_logsumexp_negatives(self, a, negatives, batch_size, device):
+    def calculate_logsumexp_negatives(self, a, negatives):
         """
         Calculates the log-sum-exp of negative cosine similarities for a given batch of embeddings against a set of
         negative samples. This function is used as a helper to compute the denominator of the softmax function in
@@ -63,24 +65,19 @@ class NTXentLoss:
             negatives (torch.Tensor):
                 A tensor of negative samples against which the cosine similarities are to be computed.
                 This could be the same as `a` or a different set depending on the context.
-            batch_size (int):
-                The number of samples in `a`, used to set up the self-similarity mask.
-            device (torch.device):
-                The device on which the computations are to be performed,
-                ensuring tensor operations are device-appropriate.
 
         Returns:
             torch.Tensor:
                 A tensor of log-sum-exp values representing the negative similarities for each sample in `a`.
         """
         # Calculate cosine similarity between each original and all other originals (for negatives)
-        negative_sim_matrix = torch.mm(a, negatives) / self.temperature
+        negative_sim_matrix = torch.bmm(a, negatives.transpose(1, 2)) / self.temperature
 
         # Mask out self-similarities (diagonal elements)
-        mask = torch.eye(batch_size, device=device, dtype=torch.bool)
+        mask = torch.eye(negative_sim_matrix.size(-1), device=a.device, dtype=torch.bool)
         negative_sim_matrix = negative_sim_matrix.masked_fill(mask, float('-inf'))
 
         # Use log-sum-exp trick to calculate the denominator of the softmax function
-        logsumexp_negatives = torch.logsumexp(negative_sim_matrix, dim=1)
+        logsumexp_negatives = torch.logsumexp(negative_sim_matrix, dim=-1)
 
         return logsumexp_negatives
