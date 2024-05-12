@@ -84,11 +84,3 @@ class NTXentLoss:
         logsumexp_negatives = torch.logsumexp(negative_sim_matrix, dim=1)
 
         return logsumexp_negatives
-
-
-def custom_logsumexp(x):
-    # Ref: https://gregorygundersen.com/blog/2020/02/09/log-sum-exp/
-    max_x = torch.max(x, dim=1, keepdim=True)[0]
-    exp_negative = torch.exp(x - max_x)
-    sum_exp_negative = torch.sum(exp_negative, dim=1, keepdim=True)
-    return torch.log(sum_exp_negative + 1e-6) + max_x.squeeze()
