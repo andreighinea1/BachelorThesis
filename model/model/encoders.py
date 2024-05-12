@@ -2,11 +2,11 @@ import torch.nn as nn
 
 
 class TimeFrequencyEncoder(nn.Module):
-    def __init__(self, input_dim=256, model_dim=64, num_layers=2, nhead=8):
+    def __init__(self, input_dim=256, output_dim=64, num_layers=2, nhead=8):
         super(TimeFrequencyEncoder, self).__init__()
-        self.encoder_layer = nn.TransformerEncoderLayer(d_model=model_dim, nhead=nhead)
+        self.fc = nn.Linear(input_dim, output_dim)  # To match the model dimension if necessary
+        self.encoder_layer = nn.TransformerEncoderLayer(d_model=output_dim, nhead=nhead)
         self.transformer_encoder = nn.TransformerEncoder(self.encoder_layer, num_layers=num_layers)
-        self.fc = nn.Linear(input_dim, model_dim)  # To match the model dimension if necessary
 
     def forward(self, x):
         x = self.fc(x)  # Reduce dimension to model_dim
