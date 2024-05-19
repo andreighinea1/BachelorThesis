@@ -8,11 +8,13 @@ from model.encoders import TimeFrequencyEncoder, CrossSpaceProjector
 from model.loss import NTXentLoss
 
 
+# Parameters from the paper
 class PreTraining:
     def __init__(
             self, data_loader, sampling_frequency, *,
-            epochs=1000, device=None,
-            pretraining_model_save_dir="model_params/pretraining",
+            device=None, pretraining_model_save_dir="model_params/pretraining",
+
+            epochs=1000,
     ):
         self.data_loader = data_loader
         self.sampling_frequency = sampling_frequency
@@ -83,8 +85,11 @@ class PreTraining:
             epoch_loss = 0
             for xT, xT_augmented, xF, xF_augmented in pbar:
                 xT, xT_augmented, xF, xF_augmented = self._move_to_device(xT, xT_augmented, xF, xF_augmented)
+
+                # Reset the optimizers
                 self.optimizer.zero_grad()
 
+                # Compute separate losses
                 hT, LT = self._compute_time_contrastive_loss(xT, xT_augmented)
                 hF, LF = self._compute_frequency_contrastive_loss(xF, xF_augmented)
                 LA = self._compute_alignment_loss(hT, hF)
