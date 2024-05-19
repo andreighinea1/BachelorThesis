@@ -4,8 +4,8 @@ import torch
 import torch.optim as optim
 from tqdm.auto import tqdm
 
-from model.encoders import TimeFrequencyEncoder, CrossSpaceProjector
-from model.loss import NTXentLoss
+from model.common.encoders import TimeFrequencyEncoder, CrossSpaceProjector
+from model.common.loss import NTXentLoss
 
 
 class PreTraining:
