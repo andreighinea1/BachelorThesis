@@ -5,7 +5,7 @@ class TimeFrequencyEncoder(nn.Module):
     def __init__(self, input_dim=256, output_dim=64, num_layers=2, nhead=8):
         super(TimeFrequencyEncoder, self).__init__()
         self.fc = nn.Linear(input_dim, output_dim)  # To match the model dimension if necessary
-        self.encoder_layer = nn.TransformerEncoderLayer(d_model=output_dim, nhead=nhead)
+        self.encoder_layer = nn.TransformerEncoderLayer(d_model=output_dim, nhead=nhead, batch_first=True)
         self.transformer_encoder = nn.TransformerEncoder(self.encoder_layer, num_layers=num_layers)
 
     def forward(self, x):
