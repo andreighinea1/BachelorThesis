@@ -8,13 +8,15 @@ from model.encoders import TimeFrequencyEncoder, CrossSpaceProjector
 from model.loss import NTXentLoss
 
 
-# Parameters from the paper
 class PreTraining:
     def __init__(
             self, data_loader, sampling_frequency, *,
             device=None, pretraining_model_save_dir="model_params/pretraining",
-
-            epochs=1000,
+            # Parameters from the paper
+            epochs=1000, lr=3e-4, l2_norm_penalty=3e-4,
+            alpha=0.2, beta=1.0, temperature=0.05,
+            encoders_output_dim=200, projectors_output_dim=128,
+            num_layers=2, nhead=8,
     ):
         self.data_loader = data_loader
         self.sampling_frequency = sampling_frequency
@@ -22,16 +24,16 @@ class PreTraining:
 
         # Hyperparameters
         self.epochs = epochs
-        self.lr = 3e-4
-        self.l2_norm_penalty = 3e-4
-        self.alpha = 0.2
-        self.beta = 1.0
-        self.temperature = 0.05
+        self.lr = lr
+        self.l2_norm_penalty = l2_norm_penalty
+        self.alpha = alpha
+        self.beta = beta
+        self.temperature = temperature
 
-        self.encoders_output_dim = 200
-        self.projectors_output_dim = 128
-        self.num_layers = 2
-        self.nhead = 8
+        self.encoders_output_dim = encoders_output_dim
+        self.projectors_output_dim = projectors_output_dim
+        self.num_layers = num_layers
+        self.nhead = nhead
 
         # Models initialization
         self.ET = TimeFrequencyEncoder(
@@ -113,8 +115,8 @@ class PreTraining:
                 self._save_model(epoch)
 
             print(f"Epoch {epoch},"
-                  f"Average Loss: {epoch_loss / len(self.data_loader):.4f},"
-                  f"Learning Rate: {self.scheduler.get_last_lr():.6f}")
+                  f" Average Loss: {epoch_loss / len(self.data_loader):.4f},"
+                  f" Learning Rate: {self.scheduler.get_last_lr():.6f}")
 
     def _move_to_device(self, *args):
         """ Move batches of data to the `device` """
