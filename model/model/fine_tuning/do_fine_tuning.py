@@ -5,7 +5,6 @@ import torch.nn.functional as F
 import torch.optim as optim
 from tqdm.auto import tqdm
 
-from model.common.encoders import TimeFrequencyEncoder, CrossSpaceProjector
 from model.common.loss import NTXentLoss
 from model.fine_tuning.classifier import EmotionClassifier
 from model.fine_tuning.gcn import GCN
@@ -13,7 +12,10 @@ from model.fine_tuning.gcn import GCN
 
 class FineTuning:
     def __init__(
-            self, data_loader, sampling_frequency, num_classes, *,
+            self, data_loader, sampling_frequency, num_classes,
+            # The trained encoders and projectors
+            ET, EF, PT, PF,
+            *,
             device=None, finetuning_model_save_dir="model_params/finetuning",
             # Parameters from the paper
             epochs=20, lr=5e-4, l2_norm_penalty=3e-4,
@@ -43,29 +45,10 @@ class FineTuning:
         self.device = device if device else torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # Models initialization
-        self.ET = TimeFrequencyEncoder(
-            input_dim=self.sampling_frequency,
-            output_dim=self.encoders_output_dim,
-            num_layers=self.num_layers,
-            nhead=self.nhead,
-        ).to(self.device)
-
-        self.EF = TimeFrequencyEncoder(
-            input_dim=self.sampling_frequency,
-            output_dim=self.encoders_output_dim,
-            num_layers=self.num_layers,
-            nhead=self.nhead,
-        ).to(self.device)
-
-        self.PT = CrossSpaceProjector(
-            input_dim=self.encoders_output_dim,
-            output_dim=self.projectors_output_dim,
-        ).to(self.device)
-
-        self.PF = CrossSpaceProjector(
-            input_dim=self.encoders_output_dim,
-            output_dim=self.projectors_output_dim,
-        ).to(self.device)
+        self.ET = ET.to(self.device)
+        self.EF = EF.to(self.device)
+        self.PT = PT.to(self.device)
+        self.PF = PF.to(self.device)
 
         self.gcn = GCN(
             input_dim=self.projectors_output_dim * 2,
@@ -82,10 +65,7 @@ class FineTuning:
 
         # Define optimizers with L2 penalty
         self.optimizer = optim.Adam(
-            list(self.ET.parameters()) + list(self.EF.parameters()) +
-            list(self.PT.parameters()) + list(self.PF.parameters()) +
-            list(self.gcn.parameters()) +
-            list(self.classifier.parameters()),
+            list(self.gcn.parameters()) + list(self.classifier.parameters()),
             lr=self.lr,
             weight_decay=self.l2_norm_penalty
         )
@@ -96,6 +76,16 @@ class FineTuning:
         if not os.path.exists(finetuning_model_save_dir):
             os.makedirs(finetuning_model_save_dir)
         self.model_save_path = os.path.join(finetuning_model_save_dir, f"finetuned_model")
+
+    def _load_pretrained_models(self, ET_path, EF_path, PT_path, PF_path):
+        self.ET.load_state_dict(torch.load(ET_path))
+        self.EF.load_state_dict(torch.load(EF_path))
+        self.PT.load_state_dict(torch.load(PT_path))
+        self.PF.load_state_dict(torch.load(PF_path))
+        self.ET.eval()
+        self.EF.eval()
+        self.PT.eval()
+        self.PF.eval()
 
     def train(self):
         for epoch in range(1, self.epochs + 1):
@@ -131,32 +121,38 @@ class FineTuning:
             print(f"Epoch {epoch}, Average Loss: {epoch_loss / len(self.data_loader):.4f}")
 
     def _generate_embeddings_and_losses(self, x):
-        # Generate time and frequency domain embeddings
-        hT = self.ET(x)
-        hT_augmented = self.ET(x)
-        LT = self.nt_xent_calculator.calculate_loss(hT, hT_augmented)
+        zT_list = []
+        zF_list = []
+        LT_list = []
+        LF_list = []
+        LA_list = []
 
-        hF = self.EF(x)
-        hF_augmented = self.EF(x)
-        LF = self.nt_xent_calculator.calculate_loss(hF, hF_augmented)
+        for channel in range(x.size(1)):
+            hT = self.ET(x[:, channel, :])
+            hT_augmented = self.ET(x[:, channel, :])
+            LT = self.nt_xent_calculator.calculate_loss(hT, hT_augmented)
 
-        zT = self.PT(hT)
-        zF = self.PF(hF)
-        LA = self.nt_xent_calculator.calculate_loss(zT, zF)
+            hF = self.EF(x[:, channel, :])
+            hF_augmented = self.EF(x[:, channel, :])
+            LF = self.nt_xent_calculator.calculate_loss(hF, hF_augmented)
+
+            zT = self.PT(hT)
+            zF = self.PF(hF)
+            LA = self.nt_xent_calculator.calculate_loss(zT, zF)
+
+            zT_list.append(zT)
+            zF_list.append(zF)
+            LT_list.append(LT)
+            LF_list.append(LF)
+            LA_list.append(LA)
+
+        zT = torch.stack(zT_list, dim=1).mean(dim=1)
+        zF = torch.stack(zF_list, dim=1).mean(dim=1)
+        LT = torch.stack(LT_list).mean()
+        LF = torch.stack(LF_list).mean()
+        LA = torch.stack(LA_list).mean()
 
         return zT, zF, LT, LF, LA
-
-    def _save_model(self, epoch):
-        model_dicts = {
-            "ET_state_dict": self.ET.state_dict(),
-            "EF_state_dict": self.EF.state_dict(),
-            "PT_state_dict": self.PT.state_dict(),
-            "PF_state_dict": self.PF.state_dict(),
-            "gcn_state_dict": self.gcn.state_dict(),
-            "classifier_state_dict": self.classifier.state_dict(),
-        }
-        torch.save(model_dicts, f"{self.model_save_path}__epoch_{epoch}.pt")
-        print(f"Saved model at epoch {epoch}")
 
     @staticmethod
     def _construct_adjacency_matrix(Z, delta=0.2):
@@ -179,3 +175,11 @@ class FineTuning:
         adj_matrix[similarity_matrix < delta] = delta
 
         return adj_matrix
+
+    def _save_model(self, epoch):
+        model_dicts = {
+            "gcn_state_dict": self.gcn.state_dict(),
+            "classifier_state_dict": self.classifier.state_dict(),
+        }
+        torch.save(model_dicts, f"{self.model_save_path}__epoch_{epoch}.pt")
+        print(f"Saved model at epoch {epoch}")
