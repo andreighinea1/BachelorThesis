@@ -12,6 +12,7 @@ class PreTraining:
     def __init__(
             self, data_loader, sampling_frequency, *,
             device=None, pretraining_model_save_dir="model_params/pretraining",
+            scheduler_patience=50,
             # Parameters from the paper
             epochs=1000, lr=3e-4, l2_norm_penalty=3e-4,
             alpha=0.2, beta=1.0, temperature=0.05,
@@ -23,6 +24,8 @@ class PreTraining:
         self.device = device if device else torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # Hyperparameters
+        self.scheduler_patience = scheduler_patience
+
         self.epochs = epochs
         self.lr = lr
         self.l2_norm_penalty = l2_norm_penalty
@@ -72,7 +75,7 @@ class PreTraining:
             self.optimizer,
             mode='min',
             factor=0.1,
-            patience=10
+            patience=self.scheduler_patience
         )
 
         self.nt_xent_calculator = NTXentLoss(temperature=self.temperature)
@@ -116,7 +119,7 @@ class PreTraining:
 
             print(f"Epoch {epoch},"
                   f" Average Loss: {epoch_loss / len(self.data_loader):.4f},"
-                  f" Learning Rate: {self.scheduler.get_last_lr():.6f}")
+                  f" Learning Rate: {self.scheduler.get_last_lr()}")
 
     def _move_to_device(self, *args):
         """ Move batches of data to the `device` """

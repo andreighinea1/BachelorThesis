@@ -3,6 +3,7 @@ from typing import Optional
 import pandas as pd
 import torch
 from torch.fft import fft
+from tqdm.auto import tqdm
 
 
 class EEGAugmentation:
@@ -96,7 +97,7 @@ class EEGAugmentation:
         """ Augments EEG data in both time and frequency domains. """
         augmented_data = []
 
-        for _, row in self.eeg_data_df.iterrows():
+        for _, row in tqdm(self.eeg_data_df.iterrows(), desc="Going through eeg_data_df rows"):
             x = torch.tensor(row["EEG"], dtype=torch.float32)
 
             # Time domain augmentation
