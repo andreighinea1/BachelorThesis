@@ -1,4 +1,6 @@
 import os
+import time
+from datetime import datetime
 
 import torch
 import torch.optim as optim
@@ -86,6 +88,9 @@ class PreTraining:
 
     def train(self):
         for epoch in range(1, self.epochs + 1):
+            start_time = time.time()
+
+            # Calculate on a mini-batch
             pbar = tqdm(self.data_loader, desc=f"Epoch {epoch}", leave=False)
             epoch_loss = 0
             for xT, xT_augmented, xF, xF_augmented in pbar:
@@ -117,9 +122,14 @@ class PreTraining:
             if epoch % 10 == 0 or epoch == self.epochs:
                 self._save_model(epoch)
 
-            print(f"Epoch {epoch},"
-                  f" Average Loss: {epoch_loss / len(self.data_loader):.4f},"
-                  f" Learning Rate: {self.scheduler.get_last_lr()}")
+            # Calculate the elapsed time for the epoch
+            elapsed_time = time.time() - start_time
+            formatted_time = datetime.fromtimestamp(elapsed_time).strftime("%M:%S.%f")[:-3]
+
+            print(f"Epoch {epoch}, "
+                  f"Average Loss: {epoch_loss / len(self.data_loader):.4f}, "
+                  f"Learning Rate: {self.scheduler.get_last_lr()}, "
+                  f"Time Taken: {formatted_time} minutes")
 
     def _move_to_device(self, *args):
         """ Move batches of data to the `device` """
