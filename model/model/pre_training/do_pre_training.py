@@ -126,7 +126,7 @@ class PreTraining:
 
             # Calculate the elapsed time for the epoch
             elapsed_time = time.time() - start_time
-            formatted_time = str(timedelta(seconds=elapsed_time))
+            formatted_time = str(timedelta(seconds=elapsed_time))[:-3]
 
             if print_after_every_epoch:
                 print(f"Epoch {epoch}, "
@@ -135,7 +135,7 @@ class PreTraining:
                       f"Time Taken: {formatted_time} minutes")
 
         overall_elapsed_time = time.time() - overall_start_time
-        overall_formatted_time = str(timedelta(seconds=overall_elapsed_time))
+        overall_formatted_time = str(timedelta(seconds=overall_elapsed_time))[:-3]
         print(
             f"Last epoch loss: {epoch_loss / len(self.data_loader):.4f}. "
             f"Time taken to train: {overall_formatted_time}"
