@@ -1,6 +1,6 @@
 import os
 import time
-from datetime import datetime
+from datetime import timedelta
 
 import torch
 import torch.optim as optim
@@ -86,34 +86,35 @@ class PreTraining:
             os.makedirs(pretraining_model_save_dir)
         self.model_save_path = os.path.join(pretraining_model_save_dir, f"pretrained_model")
 
-    def train(self):
+    def train(self, *, print_after_every_epoch=True):
+        overall_start_time = time.time()
         for epoch in range(1, self.epochs + 1):
             start_time = time.time()
 
             # Calculate on a mini-batch
-            pbar = tqdm(self.data_loader, desc=f"Epoch {epoch}", leave=False)
-            epoch_loss = 0
-            for xT, xT_augmented, xF, xF_augmented in pbar:
-                xT, xT_augmented, xF, xF_augmented = self._move_to_device(xT, xT_augmented, xF, xF_augmented)
+            with tqdm(self.data_loader, desc=f"Epoch {epoch}", leave=False) as pbar:
+                epoch_loss = 0
+                for xT, xT_augmented, xF, xF_augmented in pbar:
+                    xT, xT_augmented, xF, xF_augmented = self._move_to_device(xT, xT_augmented, xF, xF_augmented)
 
-                # Reset the optimizers
-                self.optimizer.zero_grad()
+                    # Reset the optimizers
+                    self.optimizer.zero_grad()
 
-                # Compute separate losses
-                hT, LT = self._compute_time_contrastive_loss(xT, xT_augmented)
-                hF, LF = self._compute_frequency_contrastive_loss(xF, xF_augmented)
-                LA = self._compute_alignment_loss(hT, hF)
+                    # Compute separate losses
+                    hT, LT = self._compute_time_contrastive_loss(xT, xT_augmented)
+                    hF, LF = self._compute_frequency_contrastive_loss(xF, xF_augmented)
+                    LA = self._compute_alignment_loss(hT, hF)
 
-                # Compute total loss
-                L = self.alpha * (LT + LF) + self.beta * LA
-                epoch_loss += L.item()
+                    # Compute total loss
+                    L = self.alpha * (LT + LF) + self.beta * LA
+                    epoch_loss += L.item()
 
-                # Backpropagation
-                L.backward()
-                self.optimizer.step()
+                    # Backpropagation
+                    L.backward()
+                    self.optimizer.step()
 
-                # Update tqdm progress bar with the current loss
-                pbar.set_description_str(f"Epoch {epoch}, Loss: {L.item():.4f}")
+                    # Update tqdm progress bar with the current loss
+                    pbar.set_description_str(f"Epoch {epoch}, Loss: {L.item():.4f}")
 
             # Step the scheduler based on the epoch loss
             self.scheduler.step(epoch_loss)
@@ -124,12 +125,17 @@ class PreTraining:
 
             # Calculate the elapsed time for the epoch
             elapsed_time = time.time() - start_time
-            formatted_time = datetime.fromtimestamp(elapsed_time).strftime("%M:%S.%f")[:-3]
+            formatted_time = str(timedelta(seconds=elapsed_time))
 
-            print(f"Epoch {epoch}, "
-                  f"Average Loss: {epoch_loss / len(self.data_loader):.4f}, "
-                  f"Learning Rate: {self.scheduler.get_last_lr()}, "
-                  f"Time Taken: {formatted_time} minutes")
+            if print_after_every_epoch:
+                print(f"Epoch {epoch}, "
+                      f"Average Loss: {epoch_loss / len(self.data_loader):.4f}, "
+                      f"Learning Rate: {self.scheduler.get_last_lr()}, "
+                      f"Time Taken: {formatted_time} minutes")
+
+        overall_elapsed_time = time.time() - overall_start_time
+        overall_formatted_time = str(timedelta(seconds=overall_elapsed_time))
+        print(f"Time taken to train: {overall_formatted_time}")
 
     def _move_to_device(self, *args):
         """ Move batches of data to the `device` """
