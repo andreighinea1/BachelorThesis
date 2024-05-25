@@ -87,13 +87,14 @@ class PreTraining:
         self.model_save_path = os.path.join(pretraining_model_save_dir, f"pretrained_model")
 
     def train(self, *, print_after_every_epoch=True):
+        epoch_loss = 0
         overall_start_time = time.time()
         for epoch in range(1, self.epochs + 1):
             start_time = time.time()
 
             # Calculate on a mini-batch
+            epoch_loss = 0
             with tqdm(self.data_loader, desc=f"Epoch {epoch}", leave=False) as pbar:
-                epoch_loss = 0
                 for xT, xT_augmented, xF, xF_augmented in pbar:
                     xT, xT_augmented, xF, xF_augmented = self._move_to_device(xT, xT_augmented, xF, xF_augmented)
 
@@ -135,7 +136,10 @@ class PreTraining:
 
         overall_elapsed_time = time.time() - overall_start_time
         overall_formatted_time = str(timedelta(seconds=overall_elapsed_time))
-        print(f"Time taken to train: {overall_formatted_time}")
+        print(
+            f"Last epoch loss: {epoch_loss / len(self.data_loader):.4f}. "
+            f"Time taken to train: {overall_formatted_time}"
+        )
 
     def _move_to_device(self, *args):
         """ Move batches of data to the `device` """
