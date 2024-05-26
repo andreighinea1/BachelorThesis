@@ -89,52 +89,56 @@ class PreTraining:
     def train(self, *, print_after_every_epoch=True):
         epoch_loss = 0
         overall_start_time = time.time()
-        for epoch in range(1, self.epochs + 1):
-            start_time = time.time()
 
-            # Calculate on a mini-batch
-            epoch_loss = 0
-            with tqdm(self.data_loader, desc=f"Epoch {epoch}", leave=False) as pbar:
-                for xT, xT_augmented, xF, xF_augmented in pbar:
-                    xT, xT_augmented, xF, xF_augmented = self._move_to_device(xT, xT_augmented, xF, xF_augmented)
+        with tqdm(total=self.epochs, desc="Training Progress", leave=False) as overall_pbar:
+            for epoch in range(1, self.epochs + 1):
+                start_time = time.time()
 
-                    # Reset the optimizers
-                    self.optimizer.zero_grad()
+                # Calculate on a mini-batch
+                epoch_loss = 0
+                with tqdm(self.data_loader, desc=f"Epoch {epoch}", leave=False) as pbar:
+                    for xT, xT_augmented, xF, xF_augmented in pbar:
+                        xT, xT_augmented, xF, xF_augmented = self._move_to_device(xT, xT_augmented, xF, xF_augmented)
 
-                    # Compute separate losses
-                    hT, LT = self._compute_time_contrastive_loss(xT, xT_augmented)
-                    hF, LF = self._compute_frequency_contrastive_loss(xF, xF_augmented)
-                    LA = self._compute_alignment_loss(hT, hF)
+                        # Reset the optimizers
+                        self.optimizer.zero_grad()
 
-                    # Compute total loss
-                    L = self.alpha * (LT + LF) + self.beta * LA
-                    epoch_loss += L.item()
+                        # Compute separate losses
+                        hT, LT = self._compute_time_contrastive_loss(xT, xT_augmented)
+                        hF, LF = self._compute_frequency_contrastive_loss(xF, xF_augmented)
+                        LA = self._compute_alignment_loss(hT, hF)
 
-                    # Backpropagation
-                    L.backward()
-                    self.optimizer.step()
+                        # Compute total loss
+                        L = self.alpha * (LT + LF) + self.beta * LA
+                        epoch_loss += L.item()
 
-                    # Update tqdm progress bar with the current loss
-                    pbar.set_description_str(f"Epoch {epoch}, Loss: {L.item():.4f}")
+                        # Backpropagation
+                        L.backward()
+                        self.optimizer.step()
 
-            # Step the scheduler based on the epoch loss
-            self.scheduler.step(epoch_loss)
+                        # Update tqdm progress bar with the current loss
+                        pbar.set_description_str(f"Epoch {epoch}, Loss: {L.item():.4f}")
 
-            # Save the model every 10 epochs and at the last epoch
-            if epoch % 10 == 0 or epoch == self.epochs:
-                self._save_model(epoch)
+                # Step the scheduler based on the epoch loss
+                self.scheduler.step(epoch_loss)
 
-            # Calculate the elapsed time for the epoch
-            elapsed_time = time.time() - start_time
-            formatted_time = str(timedelta(seconds=elapsed_time))[:-3]
+                # Save the model every 10 epochs and at the last epoch
+                if epoch % 10 == 0 or epoch == self.epochs:
+                    self._save_model(epoch)
 
-            if print_after_every_epoch:
-                print(
-                    f"Epoch {epoch}, "
-                    f"Average Loss: {epoch_loss / len(self.data_loader):.4f}, "
-                    f"Learning Rate: {self.scheduler.get_last_lr()}, "
-                    f"Time Taken: {formatted_time} minutes"
-                )
+                # Calculate the elapsed time for the epoch
+                elapsed_time = time.time() - start_time
+                formatted_time = str(timedelta(seconds=elapsed_time))[:-3]
+
+                if print_after_every_epoch:
+                    overall_pbar.set_description_str(
+                        f"Epoch {epoch}, "
+                        f"Average Loss: {epoch_loss / len(self.data_loader):.4f}, "
+                        f"Learning Rate: {self.scheduler.get_last_lr()}, "
+                        f"Time Taken: {formatted_time} minutes"
+                    )
+
+                overall_pbar.update(1)
 
         overall_elapsed_time = time.time() - overall_start_time
         overall_formatted_time = str(timedelta(seconds=overall_elapsed_time))[:-3]
