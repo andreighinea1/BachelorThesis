@@ -4,6 +4,7 @@ from datetime import timedelta
 
 import torch
 import torch.optim as optim
+from torch.utils.tensorboard import SummaryWriter
 from tqdm.auto import tqdm
 
 from model.common.encoders import TimeFrequencyEncoder, CrossSpaceProjector
@@ -13,7 +14,7 @@ from model.common.loss import NTXentLoss
 class PreTraining:
     def __init__(
             self, data_loader, sampling_frequency, *,
-            device=None, pretraining_model_save_dir="model_params/pretraining",
+            device=None, pretraining_model_save_dir="model_params/pretraining", log_dir="runs/pretraining",
             scheduler_patience=50,
             # Parameters from the paper
             epochs=1000, lr=3e-4, l2_norm_penalty=3e-4,
@@ -24,10 +25,13 @@ class PreTraining:
         self.data_loader = data_loader
         self.sampling_frequency = sampling_frequency
         self.device = device if device else torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.log_dir = log_dir
+
+        if not os.path.exists(pretraining_model_save_dir):
+            os.makedirs(pretraining_model_save_dir)
+        self.model_save_path = os.path.join(pretraining_model_save_dir, f"pretrained_model")
 
         # Hyperparameters
-        self.scheduler_patience = scheduler_patience
-
         self.epochs = epochs
         self.lr = lr
         self.l2_norm_penalty = l2_norm_penalty
@@ -77,20 +81,18 @@ class PreTraining:
             self.optimizer,
             mode='min',
             factor=0.1,
-            patience=self.scheduler_patience
+            patience=scheduler_patience
         )
 
         self.nt_xent_calculator = NTXentLoss(temperature=self.temperature)
 
-        if not os.path.exists(pretraining_model_save_dir):
-            os.makedirs(pretraining_model_save_dir)
-        self.model_save_path = os.path.join(pretraining_model_save_dir, f"pretrained_model")
-
-    def train(self, *, print_after_every_epoch=True):
+    def train(self, *, update_after_every_epoch=True):
+        writer = SummaryWriter(log_dir=self.log_dir)
+        batch_count = len(self.data_loader)
         epoch_loss = 0
         overall_start_time = time.time()
 
-        with tqdm(total=self.epochs, desc="Training Progress", leave=False) as overall_pbar:
+        with tqdm(total=self.epochs, desc="Training Progress", leave=False, unit="epoch") as overall_pbar:
             for epoch in range(1, self.epochs + 1):
                 start_time = time.time()
 
@@ -128,24 +130,28 @@ class PreTraining:
 
                 # Calculate the elapsed time for the epoch
                 elapsed_time = time.time() - start_time
-                formatted_time = str(timedelta(seconds=elapsed_time))[:-3]
 
-                if print_after_every_epoch:
+                # Log metrics to TensorBoard
+                avg_loss = epoch_loss / batch_count
+                current_lr = self.scheduler.get_last_lr()[0]
+                writer.add_scalar('Loss/epoch', avg_loss, epoch)
+                writer.add_scalar('Learning Rate/epoch', current_lr, epoch)
+                writer.add_scalar('Time/epoch', elapsed_time, epoch)
+
+                if update_after_every_epoch:
                     overall_pbar.set_description_str(
-                        f"Epoch {epoch}, "
-                        f"Average Loss: {epoch_loss / len(self.data_loader):.4f}, "
-                        f"Learning Rate: {self.scheduler.get_last_lr()}, "
-                        f"Time Taken: {formatted_time} minutes"
+                        f"loss: {avg_loss:.4f}, "
+                        f"lr: {current_lr:.0e}"
                     )
-
                 overall_pbar.update(1)
 
         overall_elapsed_time = time.time() - overall_start_time
         overall_formatted_time = str(timedelta(seconds=overall_elapsed_time))[:-3]
         print(
-            f"Last epoch loss: {epoch_loss / len(self.data_loader):.4f}. "
+            f"Last epoch loss: {epoch_loss / batch_count:.4f}. "
             f"Time taken to train: {overall_formatted_time}"
         )
+        writer.close()  # Close the TensorBoard writer
 
     def _move_to_device(self, *args):
         """ Move batches of data to the `device` """
