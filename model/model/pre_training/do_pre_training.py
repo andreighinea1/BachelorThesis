@@ -11,11 +11,32 @@ from model.common.encoders import TimeFrequencyEncoder, CrossSpaceProjector
 from model.common.loss import NTXentLoss
 
 
+class EarlyStopping:
+    def __init__(self, patience=100, min_delta=0.0):
+        self.patience = patience
+        self.min_delta = min_delta
+        self.best_loss = float('inf')
+        self.counter = 0
+
+    def __call__(self, loss, epoch):
+        """ If return True => We stop training """
+
+        if epoch < 1000:  # Train for at least 1k epochs  # TODO: Remove
+            return False
+
+        if loss < self.best_loss - self.min_delta:
+            self.best_loss = loss
+            self.counter = 0
+        else:
+            self.counter += 1
+        return self.counter >= self.patience
+
+
 class PreTraining:
     def __init__(
             self, data_loader, sampling_frequency, *,
             device=None, pretraining_model_save_dir="model_params/pretraining", log_dir="runs/pretraining",
-            scheduler_patience=50,
+            scheduler_patience=50, early_stopping_patience=100,
             # Parameters from the paper
             epochs=1000, lr=3e-4, l2_norm_penalty=3e-4,
             alpha=0.2, beta=1.0, temperature=0.05,
@@ -43,6 +64,8 @@ class PreTraining:
         self.projectors_output_dim = projectors_output_dim
         self.num_layers = num_layers
         self.nhead = nhead
+
+        self.early_stopping = EarlyStopping(patience=early_stopping_patience)
 
         # Models initialization
         self.ET = TimeFrequencyEncoder(
@@ -144,6 +167,14 @@ class PreTraining:
                         f"lr: {current_lr:.0e}"
                     )
                 overall_pbar.update(1)
+
+                # Early stopping check
+                if self.early_stopping(avg_loss, epoch):
+                    print(
+                        f"Early stopping at epoch {epoch} due to no improvement in loss for "
+                        f"{self.early_stopping.patience} epochs."
+                    )
+                    break
 
         overall_elapsed_time = time.time() - overall_start_time
         overall_formatted_time = str(timedelta(seconds=overall_elapsed_time))[:-3]
