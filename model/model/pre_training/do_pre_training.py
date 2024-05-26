@@ -129,10 +129,12 @@ class PreTraining:
             formatted_time = str(timedelta(seconds=elapsed_time))[:-3]
 
             if print_after_every_epoch:
-                print(f"Epoch {epoch}, "
-                      f"Average Loss: {epoch_loss / len(self.data_loader):.4f}, "
-                      f"Learning Rate: {self.scheduler.get_last_lr()}, "
-                      f"Time Taken: {formatted_time} minutes")
+                print(
+                    f"Epoch {epoch}, "
+                    f"Average Loss: {epoch_loss / len(self.data_loader):.4f}, "
+                    f"Learning Rate: {self.scheduler.get_last_lr()}, "
+                    f"Time Taken: {formatted_time} minutes"
+                )
 
         overall_elapsed_time = time.time() - overall_start_time
         overall_formatted_time = str(timedelta(seconds=overall_elapsed_time))[:-3]
