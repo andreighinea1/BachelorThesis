@@ -3,7 +3,7 @@ import time
 from datetime import timedelta
 
 import torch
-import torch.optim as optim
+from torch import optim
 from torch.utils.tensorboard import SummaryWriter
 from tqdm.auto import tqdm
 
@@ -188,10 +188,14 @@ class PreTraining:
 
     def _save_model(self, epoch):
         model_dicts = {
-            "ET_state_dict": self.ET.state_dict(),
-            "EF_state_dict": self.EF.state_dict(),
-            "PT_state_dict": self.PT.state_dict(),
-            "PF_state_dict": self.PF.state_dict(),
+            'epoch': epoch,
+            'model_state_dict': {
+                'ET': self.ET.state_dict(),
+                'EF': self.EF.state_dict(),
+                'PT': self.PT.state_dict(),
+                'PF': self.PF.state_dict()
+            },
+            'optimizer_state_dict': self.optimizer.state_dict(),
         }
         torch.save(model_dicts, f"{self.model_save_path}__epoch_{epoch}.pt")
         print(f"Saved model at epoch {epoch}")
