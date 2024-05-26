@@ -113,6 +113,7 @@ class PreTraining:
         writer = SummaryWriter(log_dir=self.log_dir)
         batch_count = len(self.data_loader)
         epoch_loss = 0
+        last_save = 0
         overall_start_time = time.time()
 
         with tqdm(total=self.epochs, desc="Training Progress", leave=False, unit="epoch") as overall_pbar:
@@ -150,6 +151,7 @@ class PreTraining:
                 # Save the model every 10 epochs and at the last epoch
                 if epoch % 10 == 0 or epoch == self.epochs:
                     self._save_model(epoch)
+                    last_save = epoch
 
                 # Calculate the elapsed time for the epoch
                 elapsed_time = time.time() - start_time
@@ -163,6 +165,7 @@ class PreTraining:
 
                 if update_after_every_epoch:
                     overall_pbar.set_description_str(
+                        f"last save: {last_save}, "
                         f"loss: {avg_loss:.4f}, "
                         f"lr: {current_lr:.0e}"
                     )
@@ -229,4 +232,3 @@ class PreTraining:
             'optimizer_state_dict': self.optimizer.state_dict(),
         }
         torch.save(model_dicts, f"{self.model_save_path}__epoch_{epoch}.pt")
-        print(f"Saved model at epoch {epoch}")
