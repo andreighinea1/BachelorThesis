@@ -1,15 +1,36 @@
 import torch
-import torch.nn.functional as F
+from torch import nn
 from torch_geometric.nn.conv import ChebConv
 
 
 class GCN(torch.nn.Module):
-    def __init__(self, input_dim, hidden_dim1, hidden_dim2, k_order):
+    def __init__(self, input_dim, hidden_dims, k_order, dropout_probs=None):
         super(GCN, self).__init__()
-        self.gcn1 = ChebConv(input_dim, hidden_dim1, k_order)
-        self.gcn2 = ChebConv(hidden_dim1, hidden_dim2, k_order)
+
+        if dropout_probs is None:
+            dropout_probs = [0.5] * len(hidden_dims)
+        if isinstance(dropout_probs, float):
+            dropout_probs = [dropout_probs] * len(hidden_dims)
+
+        # Add the input layer with dropout and activation
+        layers = [
+            ChebConv(input_dim, hidden_dims[0], k_order),
+            nn.ReLU(),
+            nn.BatchNorm1d(hidden_dims[0]),
+            nn.Dropout(p=dropout_probs[0])
+        ]
+
+        # Add the hidden layers with dropout and activation
+        for i in range(1, len(hidden_dims)):
+            layers.extend((
+                ChebConv(hidden_dims[i - 1], hidden_dims[i], k_order),
+                nn.ReLU(),
+                nn.BatchNorm1d(hidden_dims[i]),
+                nn.Dropout(p=dropout_probs[i])
+            ))
+
+        # Combine all layers into a Sequential module
+        self.gcn_layers = nn.Sequential(*layers)
 
     def forward(self, x, adj):
-        x = F.relu(self.gcn1(x, adj))
-        x = self.gcn2(x, adj)
-        return x
+        return self.gcn_layers(x, adj)

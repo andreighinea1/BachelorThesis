@@ -1,22 +1,31 @@
-import torch.nn as nn
+from torch import nn
 
 
 class EmotionClassifier(nn.Module):
-    def __init__(self, input_dim, hidden_dims, output_dim, dropout_prob=0.5):
+    def __init__(self, input_dim, hidden_dims, output_dim, dropout_probs=None):
         super(EmotionClassifier, self).__init__()
+
+        if dropout_probs is None:
+            dropout_probs = [0.5] * len(hidden_dims)
+        if isinstance(dropout_probs, float):
+            dropout_probs = [dropout_probs] * len(hidden_dims)
 
         # Add the input layer
         layers = [
             nn.Linear(input_dim, hidden_dims[0]),
             nn.ReLU(),
-            nn.Dropout(p=dropout_prob)
+            nn.BatchNorm1d(hidden_dims[0]),
+            nn.Dropout(p=dropout_probs[0])
         ]
 
         # Add the hidden layers
         for i in range(1, len(hidden_dims)):
-            layers.append(nn.Linear(hidden_dims[i - 1], hidden_dims[i]))
-            layers.append(nn.ReLU())
-            layers.append(nn.Dropout(p=dropout_prob))
+            layers.extend((
+                nn.Linear(hidden_dims[i - 1], hidden_dims[i]),
+                nn.ReLU(),
+                nn.BatchNorm1d(hidden_dims[i]),
+                nn.Dropout(p=dropout_probs[i])
+            ))
 
         # Add the output layer
         layers.append(nn.Linear(hidden_dims[-1], output_dim))

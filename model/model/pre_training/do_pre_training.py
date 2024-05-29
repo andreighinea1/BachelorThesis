@@ -159,9 +159,9 @@ class PreTraining:
                 # Log metrics to TensorBoard
                 avg_loss = epoch_loss / batch_count
                 current_lr = self.scheduler.get_last_lr()[0]
-                writer.add_scalar('Loss/epoch', avg_loss, epoch)
-                writer.add_scalar('Learning Rate/epoch', current_lr, epoch)
-                writer.add_scalar('Time/epoch', elapsed_time, epoch)
+                writer.add_scalar("Loss/epoch", avg_loss, epoch)
+                writer.add_scalar("Learning Rate/epoch", current_lr, epoch)
+                writer.add_scalar("Time/epoch", elapsed_time, epoch)
 
                 if update_after_every_epoch:
                     overall_pbar.set_description_str(
