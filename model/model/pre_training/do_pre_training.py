@@ -1,6 +1,7 @@
 import os
 import time
 from datetime import timedelta
+from typing import Optional
 
 import torch
 from torch import optim
@@ -35,7 +36,9 @@ class EarlyStopping:
 class PreTraining:
     def __init__(
             self, data_loader, sampling_frequency, *,
-            device=None, pretraining_model_save_dir="model_params/pretraining", log_dir="runs/pretraining",
+            device=None,
+            pretraining_model_save_dir: Optional[str] = "model_params/pretraining",
+            log_dir: Optional[str] = "runs/pretraining",
             scheduler_patience=50, early_stopping_patience=100,
             # Parameters from the paper
             epochs=1000, lr=3e-4, l2_norm_penalty=3e-4,
@@ -43,16 +46,27 @@ class PreTraining:
             encoders_output_dim=200, projectors_output_dim=128,
             num_layers=2, nhead=8,
     ):
+        # region Init return values
+        self.overall_elapsed_time = None
+        self.overall_formatted_time = None
+        self.last_epoch_loss = None
+        # endregion
+
+        # region Init basic variables
         self.data_loader = data_loader
         self.sampling_frequency = sampling_frequency
         self.device = device if device else torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.log_dir = log_dir
 
-        if not os.path.exists(pretraining_model_save_dir):
-            os.makedirs(pretraining_model_save_dir)
-        self.model_save_path = os.path.join(pretraining_model_save_dir, f"pretrained_model")
+        if pretraining_model_save_dir is not None:
+            if not os.path.exists(pretraining_model_save_dir):
+                os.makedirs(pretraining_model_save_dir)
+            self.model_save_path = os.path.join(pretraining_model_save_dir, f"pretrained_model")
+        else:
+            self.model_save_path = None
+        # endregion
 
-        # Hyperparameters
+        # region Hyperparameters
         self.epochs = epochs
         self.lr = lr
         self.l2_norm_penalty = l2_norm_penalty
@@ -66,8 +80,9 @@ class PreTraining:
         self.nhead = nhead
 
         self.early_stopping = EarlyStopping(patience=early_stopping_patience)
+        # endregion
 
-        # Models initialization
+        # region Models initialization
         self.ET = TimeFrequencyEncoder(
             input_dim=self.sampling_frequency,
             output_dim=self.encoders_output_dim,
@@ -91,8 +106,9 @@ class PreTraining:
             input_dim=self.encoders_output_dim,
             output_dim=self.projectors_output_dim,
         ).to(self.device)
+        # endregion
 
-        # Define optimizers with L2 penalty
+        # region Define optimizers with L2 penalty + Scheduler + Loss calculator
         self.optimizer = optim.Adam(
             (list(self.ET.parameters()) + list(self.EF.parameters()) +
              list(self.PT.parameters()) + list(self.PF.parameters())),
@@ -108,11 +124,12 @@ class PreTraining:
         )
 
         self.nt_xent_calculator = NTXentLoss(temperature=self.temperature)
+        # endregion
 
     def train(self, *, update_after_every_epoch=True):
-        writer = SummaryWriter(log_dir=self.log_dir)
+        writer = SummaryWriter(log_dir=self.log_dir) if self.log_dir is not None else None
         batch_count = len(self.data_loader)
-        epoch_loss = 0
+        last_epoch_loss = 0.
         last_save = 0
         overall_start_time = time.time()
 
@@ -157,35 +174,41 @@ class PreTraining:
                 elapsed_time = time.time() - start_time
 
                 # Log metrics to TensorBoard
-                avg_loss = epoch_loss / batch_count
+                last_epoch_loss = epoch_loss / batch_count  # Avg loss for the epoch
                 current_lr = self.scheduler.get_last_lr()[0]
-                writer.add_scalar("Loss/epoch", avg_loss, epoch)
-                writer.add_scalar("Learning Rate/epoch", current_lr, epoch)
-                writer.add_scalar("Time/epoch", elapsed_time, epoch)
+                if writer is not None:
+                    writer.add_scalar("Loss/epoch", last_epoch_loss, epoch)
+                    writer.add_scalar("Learning Rate/epoch", current_lr, epoch)
+                    writer.add_scalar("Time/epoch", elapsed_time, epoch)
 
                 if update_after_every_epoch:
                     overall_pbar.set_description_str(
                         f"last save: {last_save}, "
-                        f"loss: {avg_loss:.4f}, "
+                        f"loss: {last_epoch_loss:.4f}, "
                         f"lr: {current_lr:.0e}"
                     )
                 overall_pbar.update(1)
 
                 # Early stopping check
-                if self.early_stopping(avg_loss, epoch):
+                if self.early_stopping(last_epoch_loss, epoch):
                     print(
                         f"Early stopping at epoch {epoch} due to no improvement in loss for "
                         f"{self.early_stopping.patience} epochs."
                     )
                     break
 
-        overall_elapsed_time = time.time() - overall_start_time
-        overall_formatted_time = str(timedelta(seconds=overall_elapsed_time))[:-3]
+        self.overall_elapsed_time = time.time() - overall_start_time
+        self.overall_formatted_time = str(timedelta(seconds=self.overall_elapsed_time))[:-3]
         print(
-            f"Last epoch loss: {epoch_loss / batch_count:.4f}. "
-            f"Time taken to train: {overall_formatted_time}"
+            f"Last epoch loss: {last_epoch_loss:.4f}. "
+            f"Time taken to train: {self.overall_formatted_time}"
         )
-        writer.close()  # Close the TensorBoard writer
+        self.last_epoch_loss = last_epoch_loss
+
+        if writer is not None:
+            writer.close()  # Close the TensorBoard writer
+
+        return
 
     def _move_to_device(self, *args):
         """ Move batches of data to the `device` """
@@ -221,6 +244,9 @@ class PreTraining:
         return LA
 
     def _save_model(self, epoch):
+        if self.model_save_path is None:
+            return  # Won't save model
+
         model_dicts = {
             'epoch': epoch,
             'model_state_dict': {
