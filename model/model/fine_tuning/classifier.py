@@ -1,4 +1,4 @@
-from torch import nn
+import torch.nn as nn
 
 
 class EmotionClassifier(nn.Module):
@@ -20,12 +20,12 @@ class EmotionClassifier(nn.Module):
 
         # Add the hidden layers
         for i in range(1, len(hidden_dims)):
-            layers.extend((
+            layers.extend([
                 nn.Linear(hidden_dims[i - 1], hidden_dims[i]),
                 nn.ReLU(),
                 nn.BatchNorm1d(hidden_dims[i]),
                 nn.Dropout(p=dropout_probs[i])
-            ))
+            ])
 
         # Add the output layer
         layers.append(nn.Linear(hidden_dims[-1], output_dim))
