@@ -149,7 +149,7 @@ class PreTraining:
                         # Compute separate losses
                         hT, LT = self._compute_time_contrastive_loss(xT, xT_augmented)
                         hF, LF = self._compute_frequency_contrastive_loss(xF, xF_augmented)
-                        LA = self._compute_alignment_loss(hT, hF)
+                        _, _, LA = self._compute_alignment_loss(hT, hF)
 
                         # Compute total loss
                         L = self.alpha * (LT + LF) + self.beta * LA
@@ -241,7 +241,7 @@ class PreTraining:
             zT,
             zF
         )
-        return LA
+        return zT, zF, LA
 
     def _save_model(self, epoch):
         if self.model_save_path is None:
