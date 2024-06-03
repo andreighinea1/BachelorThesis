@@ -43,8 +43,6 @@ class FineTuning:
         self.temperature = temperature
         self.encoders_output_dim = encoders_output_dim
         self.projectors_output_dim = projectors_output_dim
-        self.num_layers = num_layers
-        self.nhead = nhead
         self.k_order = k_order
         self.delta = delta
         self.device = device if device else torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -73,7 +71,9 @@ class FineTuning:
 
         # Define optimizers with L2 penalty
         self.optimizer = optim.Adam(
-            list(self.gcn.parameters()) + list(self.classifier.parameters()),
+            (list(self.ET.parameters()) + list(self.EF.parameters()) +
+             list(self.PT.parameters()) + list(self.PF.parameters()) +
+             list(self.gcn.parameters()) + list(self.classifier.parameters())),
             lr=self.lr,
             weight_decay=self.l2_norm_penalty
         )
@@ -101,10 +101,9 @@ class FineTuning:
                     zT, zF, LA = self._compute_alignment_loss(hT, hF)
 
                     Z = torch.cat([zT, zF], dim=-1)
-                    adj_matrix = self._construct_adjacency_matrix(Z, self.delta)
-
+                    adj_matrix = self._build_adjacency_matrix(Z, self.delta)
                     gcn_output = self.gcn(Z, adj_matrix)
-                    logits = self.classifier(gcn_output)
+                    logits = self.classifier(gcn_output.flatten())  # TODO: With flatten or not?
 
                     Lcls = self.cross_entropy_loss(logits, y)
                     L = self.alpha * (LT + LF) + self.beta * LA + self.gamma * Lcls
@@ -157,20 +156,20 @@ class FineTuning:
         return zT, zF, LA
 
     @staticmethod
-    def _construct_adjacency_matrix(Z, delta=0.2):
+    def _build_adjacency_matrix(Z, delta=0.2):
         """
         Construct the adjacency matrix based on cosine similarity.
 
         Parameters:
-        - Z (torch.Tensor): The node features matrix (N x F), where N is the number of nodes (channels)
-          and F is the feature dimension.
-        - delta (float): The threshold value to determine the adjacency matrix entries.
+            - Z (torch.Tensor): The node features matrix (BATCH x N x F), where N is the number of nodes (channels)
+              and F is the feature dimension. (batch_size, V, F)
+            - delta (float): The threshold value to determine the adjacency matrix entries.
 
         Returns:
-        - adj_matrix (torch.Tensor): The constructed adjacency matrix (N x N).
+            - adj_matrix (torch.Tensor): The constructed adjacency matrix (N x N).
         """
         # Calculate the cosine similarity between each pair of node features
-        similarity_matrix = F.cosine_similarity(Z.unsqueeze(1), Z.unsqueeze(0), dim=-1)
+        similarity_matrix = F.cosine_similarity(Z, Z.transpose(-1, -2), dim=-1)
 
         # Apply the adjacency matrix formula
         adj_matrix = torch.exp(similarity_matrix - 1)

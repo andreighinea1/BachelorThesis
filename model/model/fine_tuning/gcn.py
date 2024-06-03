@@ -1,6 +1,5 @@
 import torch
 from torch import nn
-from torch.functional import F
 from torch_geometric.nn.conv import ChebConv
 
 
@@ -40,16 +39,3 @@ class GCN(torch.nn.Module):
             else:
                 x = layer(x)
         return x
-
-    @staticmethod
-    def build_adjacency_matrix(Z, delta=0.2):
-        # Z: (batch_size, V, F)
-        Z_norm = F.normalize(Z, p=2, dim=-1)  # Normalize along the feature dimension
-        sim_matrix = torch.matmul(Z_norm, Z_norm.transpose(-1, -2))  # Cosine similarity
-
-        A = torch.where(
-            sim_matrix >= delta,
-            torch.exp(sim_matrix - 1),
-            torch.tensor(delta).to(sim_matrix.device)  # Will be broadcasted to the right size
-        )
-        return A
