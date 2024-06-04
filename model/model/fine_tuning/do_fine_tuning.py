@@ -22,9 +22,9 @@ class FineTuning:
             epochs=20, lr=5e-4, l2_norm_penalty=3e-4,
             alpha=0.1, beta=0.1, gamma=1.0, temperature=0.05,
             encoders_output_dim=200, projectors_output_dim=128,
-            num_layers=2, nhead=8,
             gcn_hidden_dims=None, classifier_hidden_dims=None,
             k_order=3, delta=0.2,
+            overwrite_training=False,
     ):
         if gcn_hidden_dims is None:
             gcn_hidden_dims = [128, 64]
@@ -81,9 +81,14 @@ class FineTuning:
         self.nt_xent_calculator = NTXentLoss(temperature=self.temperature)
         self.cross_entropy_loss = torch.nn.CrossEntropyLoss()
 
-        if not os.path.exists(finetuning_model_save_dir):
-            os.makedirs(finetuning_model_save_dir)
-        self.model_save_path = os.path.join(finetuning_model_save_dir, f"finetuned_model")
+        if finetuning_model_save_dir is not None:
+            if not os.path.exists(finetuning_model_save_dir):
+                os.makedirs(finetuning_model_save_dir)
+            if not overwrite_training and os.listdir(finetuning_model_save_dir):
+                raise Exception(f"Model folder not empty, probably already trained: {finetuning_model_save_dir}")
+            self.model_save_path = os.path.join(finetuning_model_save_dir, f"finetuned_model")
+        else:
+            self.model_save_path = None
 
     def train(self):
         for epoch in range(1, self.epochs + 1):

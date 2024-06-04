@@ -16,14 +16,11 @@ class EarlyStopping:
     def __init__(self, patience=100, min_delta=0.0):
         self.patience = patience
         self.min_delta = min_delta
-        self.best_loss = float('inf')
+        self.best_loss = float("inf")
         self.counter = 0
 
     def __call__(self, loss, epoch):
         """ If return True => We stop training """
-
-        if epoch < 1000:  # Train for at least 1k epochs  # TODO: Remove
-            return False
 
         if loss < self.best_loss - self.min_delta:
             self.best_loss = loss
@@ -34,6 +31,9 @@ class EarlyStopping:
 
 
 class PreTraining:
+    SAVED_MODEL_DIR_ADD = "_saved"
+    MODEL_ADD = "pretrained_model"
+
     def __init__(
             self, data_loader, sampling_frequency, *,
             device=None,
@@ -45,6 +45,7 @@ class PreTraining:
             alpha=0.2, beta=1.0, temperature=0.05,
             encoders_output_dim=200, projectors_output_dim=128,
             num_layers=2, nhead=8,
+            overwrite_training=False,
     ):
         # region Init return values
         self.overall_elapsed_time = None
@@ -61,9 +62,21 @@ class PreTraining:
         if pretraining_model_save_dir is not None:
             if not os.path.exists(pretraining_model_save_dir):
                 os.makedirs(pretraining_model_save_dir)
-            self.model_save_path = os.path.join(pretraining_model_save_dir, f"pretrained_model")
+            if not overwrite_training and os.listdir(pretraining_model_save_dir):
+                raise Exception(f"Model folder not empty, probably already trained: {pretraining_model_save_dir}")
+
+            self.model_save_dir = pretraining_model_save_dir
+            self.model_save_path = os.path.join(self.model_save_dir, self.MODEL_ADD)
+
+            self.model_final_save_dir = self.model_save_dir + self.SAVED_MODEL_DIR_ADD
+            self.model_final_save_path = os.path.join(self.model_final_save_dir, self.MODEL_ADD)
         else:
+            self.model_save_dir = None
             self.model_save_path = None
+            self.model_final_save_dir = None
+            self.model_final_save_path = None
+
+        self._trained = False
         # endregion
 
         # region Hyperparameters
@@ -118,7 +131,7 @@ class PreTraining:
 
         self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             self.optimizer,
-            mode='min',
+            mode="min",
             factor=0.1,
             patience=scheduler_patience
         )
@@ -126,7 +139,10 @@ class PreTraining:
         self.nt_xent_calculator = NTXentLoss(temperature=self.temperature)
         # endregion
 
-    def train(self, *, update_after_every_epoch=True):
+    def train(self, *, update_after_every_epoch=True, force_train=False):
+        if self._trained and not force_train:
+            raise Exception("Trying to train an already trained model!")
+
         writer = SummaryWriter(log_dir=self.log_dir) if self.log_dir is not None else None
         batch_count = len(self.data_loader)
         last_epoch_loss = 0.
@@ -208,6 +224,10 @@ class PreTraining:
         if writer is not None:
             writer.close()  # Close the TensorBoard writer
 
+        # Rename folder to keep the training "saved"
+        os.rename(self.model_save_dir, self.model_final_save_dir)
+        self._trained = True
+
         return
 
     def _move_to_device(self, *args):
@@ -245,16 +265,35 @@ class PreTraining:
 
     def _save_model(self, epoch):
         if self.model_save_path is None:
-            return  # Won't save model
+            return  # Will not save model
 
         model_dicts = {
-            'epoch': epoch,
-            'model_state_dict': {
-                'ET': self.ET.state_dict(),
-                'EF': self.EF.state_dict(),
-                'PT': self.PT.state_dict(),
-                'PF': self.PF.state_dict()
+            "epoch": epoch,
+            "model_state_dict": {
+                "ET": self.ET.state_dict(),
+                "EF": self.EF.state_dict(),
+                "PT": self.PT.state_dict(),
+                "PF": self.PF.state_dict()
             },
-            'optimizer_state_dict': self.optimizer.state_dict(),
+            "optimizer_state_dict": self.optimizer.state_dict(),
         }
         torch.save(model_dicts, f"{self.model_save_path}__epoch_{epoch}.pt")
+
+    def load_model(self, epoch):
+        if self.model_final_save_path is None:
+            return  # Will not load model
+
+        model_path = f"{self.model_final_save_path}__epoch_{epoch}.pt"
+        print(f"Trying to load model from {model_path}")
+
+        model_dicts = torch.load(model_path)
+        model_state_dict = model_dicts["model_state_dict"]
+        for model_type, state_dict in model_state_dict.items():
+            model = getattr(self, model_type)
+            if not isinstance(model, torch.nn.modules.module.Module):
+                raise ValueError(f"Unknown model type: {type(model)}")
+            model.load_state_dict(state_dict)
+        self.optimizer.load_state_dict(model_dicts["optimizer_state_dict"])
+
+        self._trained = True
+        print(f"Loaded model from {model_path}")
