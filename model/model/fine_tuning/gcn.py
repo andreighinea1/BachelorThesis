@@ -1,7 +1,8 @@
 import torch
 import torch.nn.functional as F
 from torch import nn
-from torch_geometric.nn.conv import ChebConv
+
+from model.fine_tuning.dense_cheb_conv import DenseChebConv
 
 
 class GCN(torch.nn.Module):
@@ -15,7 +16,7 @@ class GCN(torch.nn.Module):
 
         # Add the input layer with dropout and activation
         layers = [
-            ChebConv(input_dim, hidden_dims[0], k_order),
+            DenseChebConv(input_dim, hidden_dims[0], k_order),
             nn.ReLU(),
             nn.BatchNorm1d(hidden_dims[0]),
             nn.Dropout(p=dropout_probs[0])
@@ -24,7 +25,7 @@ class GCN(torch.nn.Module):
         # Add the hidden layers with dropout and activation
         for i in range(1, len(hidden_dims)):
             layers.extend([
-                ChebConv(hidden_dims[i - 1], hidden_dims[i], k_order),
+                DenseChebConv(hidden_dims[i - 1], hidden_dims[i], k_order),
                 nn.ReLU(),
                 nn.BatchNorm1d(hidden_dims[i]),
                 nn.Dropout(p=dropout_probs[i])
@@ -33,10 +34,10 @@ class GCN(torch.nn.Module):
         # Combine all layers into a Sequential module
         self.gcn_layers = nn.Sequential(*layers)
 
-    def forward(self, x, edge_index, edge_weight):
+    def forward(self, x, adj):
         for layer in self.gcn_layers:
-            if isinstance(layer, ChebConv):
-                x = layer(x, edge_index, edge_weight)
+            if isinstance(layer, DenseChebConv):
+                x = layer(x, adj)
             else:
                 x = layer(x)
         return x

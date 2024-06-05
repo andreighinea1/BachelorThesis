@@ -3,7 +3,7 @@ from torch import nn
 from torch.nn import init
 
 
-class DenseChebConv(nn.Module):
+class BatchDenseChebConv(nn.Module):
     r"""Chebyshev Spectral Graph Convolution layer from `Convolutional
     Neural Networks on Graphs with Fast Localized Spectral Filtering
     <https://arxiv.org/pdf/1606.09375.pdf>`__
@@ -47,7 +47,7 @@ class DenseChebConv(nn.Module):
     """
 
     def __init__(self, in_feats, out_feats, k, activation="relu", bias=True):
-        super(DenseChebConv, self).__init__()
+        super(BatchDenseChebConv, self).__init__()
         self._in_feats = in_feats
         self._out_feats = out_feats
         self._k = k
@@ -78,12 +78,13 @@ class DenseChebConv(nn.Module):
         Parameters
         ----------
         feat: torch.Tensor
-            The input feature of shape :math:`(N, D_{in})` where :math:`D_{in}`
+            The input feature of shape :math:`(B, N, D_{in})` where :math:`D_{in}`
             is size of input feature, :math:`N` is the number of nodes.
         adj: torch.Tensor
             The adjacency matrix of the graph to apply Graph Convolution on,
-            should be of shape :math:`(N, N)`, where N is the number of nodes,
-            a row represents the destination and a column represents the source.
+            should be of shape :math:`(B, N, N)`, where B is the batch size,
+            N is the number of nodes, a row represents the destination
+            and a column represents the source.
         lambda_max: float or None, optional
             A float value indicates the largest eigenvalue of given graph.
             Default: None.
@@ -91,24 +92,25 @@ class DenseChebConv(nn.Module):
         Returns
         -------
         torch.Tensor
-            The output feature of shape :math:`(N, D_{out})` where :math:`D_{out}`
+            The output feature of shape :math:`(B, N, D_{out})` where :math:`D_{out}`
             is size of output feature.
         """
         A = adj.to(feat)
-        N, _ = A.shape
+        B, N, _ = A.shape
 
-        # Normalizing adjacency matrix
-        in_degree = 1 / A.sum(dim=1).clamp(min=1).sqrt()  # Shape: (N)
-        D_invsqrt = torch.diag(in_degree)  # Shape: (N, N)
-        I = torch.eye(N).to(A)  # Shape: (N, N)
-        L = I - D_invsqrt @ A @ D_invsqrt  # Shape: (N, N)
+        # Normalizing adjacency matrix for each graph in the batch
+        in_degree = 1 / A.sum(dim=-1).clamp(min=1).sqrt()  # Shape: (B, N)
+        D_invsqrt = torch.diag_embed(in_degree)  # Shape: (B, N, N)
+        I = torch.eye(N).to(A).unsqueeze(0).expand(B, -1, -1)  # Shape: (B, N, N)
+        L = I - D_invsqrt @ A @ D_invsqrt  # Shape: (B, N, N)
 
         # Scaling Laplacian
         if lambda_max is None:
-            lambda_: torch.Tensor = torch.linalg.eigvals(L).real  # Shape: (N)
-            lambda_max = lambda_.max()  # Number
+            lambda_: torch.Tensor = torch.linalg.eigvals(L).real  # Shape: (B, N)
+            lambda_max = lambda_.max(dim=-1)[0]  # Shape: (B)
+            # lambda_max[:, None, None] -> Shape: (B, 1, 1)
 
-        L_hat = 2 * L / lambda_max - I  # Shape: (N, N)
+        L_hat = 2 * L / lambda_max[:, None, None] - I  # Shape: (B, N, N)
 
         # Compute Chebyshev polynomials
         Z = [I]
@@ -117,13 +119,15 @@ class DenseChebConv(nn.Module):
         for i in range(2, self._k):
             Z.append(2 * L_hat @ Z[-1] - Z[-2])
 
-        Zs = torch.stack(Z, 0)  # Shape: (k, N, N)
+        Zs = torch.stack(Z, 0)  # Shape: (k, B, N, N)
 
         # Apply Chebyshev polynomials to the input feature
-        # (k, N, N) @ (1, N, D_in) @ (k, D_in, D_out)
-        Zh = Zs @ feat.unsqueeze(0) @ self.W  # Shape: (k, N, D_out)
-        Zh = Zh.sum(0)  # Shape: (N, D_out)
+        # (k, B, N, N) @ (B, N, D_in) => (k, B, N, D_in)
+        Zh = torch.einsum('kbnm,bmd->kbnd', Zs, feat)  # Shape: (k, B, N, D_in)
+        # (k, B, N, D_in) @ (k, D_in, D_out) => (k, B, N, D_out)
+        Zh = torch.einsum('kbnd,kdo->kbno', Zh, self.W)  # Shape: (k, B, N, D_out)
+        Zh = Zh.sum(0)  # Shape: (B, N, D_out)
 
         if self.bias is not None:
-            Zh = Zh + self.bias  # Shape: (N, D_out)
+            Zh = Zh + self.bias  # Shape: (B, N, D_out)
         return Zh
