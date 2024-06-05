@@ -72,18 +72,18 @@ class DenseChebConv(nn.Module):
         for i in range(self._k):
             init.xavier_normal_(self.W[i], init.calculate_gain(self._activation))
 
-    def forward(self, adj, feat, lambda_max=None):
+    def forward(self, feat, adj, lambda_max=None):
         r"""Compute (Dense) Chebyshev Spectral Graph Convolution layer
 
         Parameters
         ----------
+        feat: torch.Tensor
+            The input feature of shape :math:`(N, D_{in})` where :math:`D_{in}`
+            is size of input feature, :math:`N` is the number of nodes.
         adj: torch.Tensor
             The adjacency matrix of the graph to apply Graph Convolution on,
             should be of shape :math:`(N, N)`, where a row represents the destination
             and a column represents the source.
-        feat: torch.Tensor
-            The input feature of shape :math:`(N, D_{in})` where :math:`D_{in}`
-            is size of input feature, :math:`N` is the number of nodes.
         lambda_max: float or None, optional
             A float value indicates the largest eigenvalue of given graph.
             Default: None.
