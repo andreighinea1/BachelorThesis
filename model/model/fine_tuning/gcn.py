@@ -3,6 +3,8 @@ import torch.nn.functional as F
 from torch import nn
 
 from model.fine_tuning.batch_dense_cheb_conv import BatchDenseChebConv
+
+
 # from torch_geometric.nn.conv import ChebConv
 
 
@@ -19,8 +21,8 @@ class GCN(torch.nn.Module):
         layers = [
             BatchDenseChebConv(input_dim, hidden_dims[0], k_order),
             nn.ReLU(),
-            nn.BatchNorm1d(hidden_dims[0]),
-            nn.Dropout(p=dropout_probs[0])
+            # nn.BatchNorm1d(hidden_dims[0]),  # TODO: Add back, but take note that channel dimension is constant
+            # nn.Dropout(p=dropout_probs[0]),  # TODO: Add back
         ]
 
         # Add the hidden layers with dropout and activation
@@ -28,8 +30,8 @@ class GCN(torch.nn.Module):
             layers.extend([
                 BatchDenseChebConv(hidden_dims[i - 1], hidden_dims[i], k_order),
                 nn.ReLU(),
-                nn.BatchNorm1d(hidden_dims[i]),
-                nn.Dropout(p=dropout_probs[i])
+                # nn.BatchNorm1d(hidden_dims[i]),  # TODO: Add back
+                # nn.Dropout(p=dropout_probs[i]),  # TODO: Add back
             ])
 
         # Combine all layers into a Sequential module
@@ -61,8 +63,11 @@ class GCN(torch.nn.Module):
         Z_norm = F.normalize(Z, p=2, dim=-1)  # Normalize along the feature dimension
         sim_matrix = torch.bmm(Z_norm, Z_norm.transpose(-1, -2))  # Cosine similarity
 
-        # Apply the adjacency matrix formula
-        adj_matrix = torch.exp(sim_matrix - 1)
-        adj_matrix[sim_matrix < delta] = delta
+        # Apply the adjacency matrix formula (have to use where so that it can be back-propagated)
+        adj_matrix = torch.where(
+            sim_matrix >= delta,
+            torch.exp(sim_matrix - 1),
+            torch.tensor(delta, device=Z.device),
+        )
 
         return adj_matrix

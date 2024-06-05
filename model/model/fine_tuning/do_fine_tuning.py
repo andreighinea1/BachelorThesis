@@ -1,7 +1,6 @@
 import os
 
 import torch
-import torch.nn.functional as F
 import torch.optim as optim
 from tqdm.auto import tqdm
 
@@ -19,9 +18,9 @@ class FineTuning:
             *,
             device=None, finetuning_model_save_dir="model_params/finetuning",
             # Parameters from the paper
-            epochs=20, lr=5e-4, l2_norm_penalty=3e-4,
-            alpha=0.1, beta=0.1, gamma=1.0, temperature=0.05,
-            encoders_output_dim=200, projectors_output_dim=128,
+            epochs=20, lr=5e-4, weight_decay=3e-4,
+            alpha=0.1, beta=0.1, gamma=1.0, temperature=0.5,
+            projectors_output_dim=128,
             gcn_hidden_dims=None, gcn_k_order=3, delta=0.2,
             classifier_hidden_dims=None,
             overwrite_training=False,
@@ -36,12 +35,11 @@ class FineTuning:
         self.num_classes = num_classes
         self.epochs = epochs
         self.lr = lr
-        self.l2_norm_penalty = l2_norm_penalty
+        self.weight_decay = weight_decay
         self.alpha = alpha
         self.beta = beta
         self.gamma = gamma
         self.temperature = temperature
-        self.encoders_output_dim = encoders_output_dim
         self.projectors_output_dim = projectors_output_dim
         self.gcn_k_order = gcn_k_order
         self.delta = delta
@@ -58,13 +56,13 @@ class FineTuning:
         self.PF.train()
 
         self.gcn = GCN(
-            input_dim=self.projectors_output_dim * 2,
+            input_dim=projectors_output_dim * 2,
             hidden_dims=gcn_hidden_dims,
             k_order=self.gcn_k_order
         ).to(self.device)
 
         self.classifier = EmotionClassifier(
-            input_dim=gcn_hidden_dims[-1],
+            input_dim=62 * gcn_hidden_dims[-1],  # TODO: Make 62 a parameter for channel_count
             hidden_dims=classifier_hidden_dims,
             output_dim=self.num_classes
         ).to(self.device)
@@ -75,7 +73,7 @@ class FineTuning:
              list(self.PT.parameters()) + list(self.PF.parameters()) +
              list(self.gcn.parameters()) + list(self.classifier.parameters())),
             lr=self.lr,
-            weight_decay=self.l2_norm_penalty
+            weight_decay=weight_decay
         )
 
         self.nt_xent_calculator = NTXentLoss(temperature=self.temperature)
@@ -101,39 +99,42 @@ class FineTuning:
                     # Reset the optimizers
                     self.optimizer.zero_grad()
 
-                    # Compute separate losses channel by channel
-                    LT, LF, LA, zT_list, zF_list = 0., 0., 0., [], []
+                    # Compute separate losses channel by channel, initialized as tensors
+                    LT = torch.tensor(0.0, device=self.device, requires_grad=True)
+                    LF = torch.tensor(0.0, device=self.device, requires_grad=True)
+                    LA = torch.tensor(0.0, device=self.device, requires_grad=True)
+                    zT_list, zF_list = [], []
                     for i in range(channel_count):
                         hT, LT_i = self._compute_time_contrastive_loss(
-                            xT[:, i, :].unsqueeze(1),
-                            xT_augmented[:, i, :].unsqueeze(1)
+                            xT[:, i, :],
+                            xT_augmented[:, i, :]
                         )
                         hF, LF_i = self._compute_frequency_contrastive_loss(
-                            xF[:, i, :].unsqueeze(1),
-                            xF_augmented[:, i, :].unsqueeze(1)
+                            xF[:, i, :],
+                            xF_augmented[:, i, :]
                         )
                         zT, zF, LA_i = self._compute_alignment_loss(hT, hF)
 
-                        LT += LT_i
-                        LF += LF_i
-                        LA += LA_i
+                        LT = LT + LT_i
+                        LF = LF + LF_i
+                        LA = LA + LA_i
                         zT_list.append(zT)
                         zF_list.append(zF)
 
                     # Average the losses over all channels
-                    LT /= channel_count
-                    LF /= channel_count
-                    LA /= channel_count
+                    LT = LT / channel_count
+                    LF = LF / channel_count
+                    LA = LA / channel_count
 
                     # Stack the projected embeddings
-                    zT = torch.cat(zT_list, dim=1)
-                    zF = torch.cat(zF_list, dim=1)
+                    zT = torch.stack(zT_list, dim=1)
+                    zF = torch.stack(zF_list, dim=1)
 
                     # Combine and process through GCN and classifier
                     Z = torch.cat([zT, zF], dim=-1)
                     adj_matrix = self.gcn.build_adjacency_matrix(Z)
                     gcn_output = self.gcn(Z, adj_matrix)
-                    logits = self.classifier(gcn_output.flatten())  # TODO: With flatten or not?
+                    logits = self.classifier(gcn_output.flatten(start_dim=1))
 
                     # Calculate classification loss
                     Lcls = self.cross_entropy_loss(logits, y)

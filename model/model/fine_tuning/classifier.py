@@ -14,8 +14,8 @@ class EmotionClassifier(nn.Module):
         layers = [
             nn.Linear(input_dim, hidden_dims[0]),
             nn.ReLU(),
-            nn.BatchNorm1d(hidden_dims[0]),
-            nn.Dropout(p=dropout_probs[0])
+            # nn.BatchNorm1d(hidden_dims[0]),  # TODO: Add BatchNorm1d back
+            # nn.Dropout(p=dropout_probs[0]),  # TODO: Add back
         ]
 
         # Add the hidden layers
@@ -23,8 +23,8 @@ class EmotionClassifier(nn.Module):
             layers.extend([
                 nn.Linear(hidden_dims[i - 1], hidden_dims[i]),
                 nn.ReLU(),
-                nn.BatchNorm1d(hidden_dims[i]),
-                nn.Dropout(p=dropout_probs[i])
+                # nn.BatchNorm1d(hidden_dims[i]),  # TODO: Add BatchNorm1d back
+                # nn.Dropout(p=dropout_probs[i]),  # TODO: Add back
             ])
 
         # Add the output layer

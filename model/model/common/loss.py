@@ -71,7 +71,7 @@ class NTXentLoss:
                 A tensor of log-sum-exp values representing the negative similarities for each sample in `a`.
         """
         # Calculate cosine similarity between each original and all other originals (for negatives)
-        negative_sim_matrix = torch.bmm(a, negatives.transpose(-1, -2)) / self.temperature
+        negative_sim_matrix = a @ negatives.transpose(-1, -2) / self.temperature
 
         # Mask out self-similarities (diagonal elements)
         mask = torch.eye(negative_sim_matrix.size(-1), device=a.device, dtype=torch.bool)
