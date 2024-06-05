@@ -12,7 +12,7 @@ from model.fine_tuning.gcn import GCN
 
 class FineTuning:
     def __init__(
-            self, data_loader, sampling_frequency, num_classes,
+            self, data_loader, data_loader_eval, sampling_frequency, num_classes,
             # The trained encoders and projectors
             ET: TimeFrequencyEncoder, EF: TimeFrequencyEncoder, PT: CrossSpaceProjector, PF: CrossSpaceProjector,
             *,
@@ -31,6 +31,7 @@ class FineTuning:
             classifier_hidden_dims = [1024, 128]
 
         self.data_loader = data_loader
+        self.data_loader_eval = data_loader_eval
         self.sampling_frequency = sampling_frequency
         self.num_classes = num_classes
         self.epochs = epochs
@@ -148,11 +149,55 @@ class FineTuning:
                     # Update tqdm progress bar with the current loss
                     pbar.set_description_str(f"Epoch {epoch}, Loss: {L.item():.4f}")
 
-            # Save the model every 10 epochs and at the last epoch
-            if epoch % 10 == 0 or epoch == self.epochs:
-                self._save_model(epoch)
+            # Save the model every 1 epoch
+            self._save_model(epoch)
 
-            print(f"Epoch {epoch}, Average Loss: {epoch_loss / len(self.data_loader):.4f}")
+            # Evaluate accuracy
+            # TODO: Don't repeat code
+            correct, total = 0, 0
+            with torch.no_grad():
+                self.ET.eval()
+                self.EF.eval()
+                self.PT.eval()
+                self.PF.eval()
+                self.gcn.eval()
+                self.classifier.eval()
+
+                for xT, xT_augmented, xF, xF_augmented, y in self.data_loader_eval:
+                    xT, xT_augmented, xF, xF_augmented, y = self._move_to_device(xT, xT_augmented, xF, xF_augmented, y)
+                    channel_count = xT.size(1)
+                    zT_list, zF_list = [], []
+                    for i in range(channel_count):
+                        hT, _ = self._compute_time_contrastive_loss(xT[:, i, :], xT_augmented[:, i, :])
+                        hF, _ = self._compute_frequency_contrastive_loss(xF[:, i, :], xF_augmented[:, i, :])
+                        zT, zF, _ = self._compute_alignment_loss(hT, hF)
+                        zT_list.append(zT)
+                        zF_list.append(zF)
+
+                    zT = torch.stack(zT_list, dim=1)
+                    zF = torch.stack(zF_list, dim=1)
+                    Z = torch.cat([zT, zF], dim=-1)
+                    adj_matrix = self.gcn.build_adjacency_matrix(Z)
+                    gcn_output = self.gcn(Z, adj_matrix)
+                    logits = self.classifier(gcn_output.flatten(start_dim=1))
+
+                    predictions = torch.argmax(logits, dim=1)
+                    correct += (predictions == y).sum().item()
+                    total += y.size(0)
+
+                self.ET.train()
+                self.EF.train()
+                self.PT.train()
+                self.PF.train()
+                self.gcn.train()
+                self.classifier.train()
+
+            accuracy = correct / total
+            print(
+                f"Epoch {epoch}, "
+                f"Average Loss: {epoch_loss / len(self.data_loader):.4f}, "
+                f"Evaluation Accuracy: {accuracy:.4f}"
+            )
 
     def _move_to_device(self, *args):
         """ Move batches of data to the `device` """
