@@ -22,8 +22,8 @@ class FineTuning:
             epochs=20, lr=5e-4, l2_norm_penalty=3e-4,
             alpha=0.1, beta=0.1, gamma=1.0, temperature=0.05,
             encoders_output_dim=200, projectors_output_dim=128,
-            gcn_hidden_dims=None, classifier_hidden_dims=None,
-            k_order=3, delta=0.2,
+            gcn_hidden_dims=None, gcn_k_order=3, delta=0.2,
+            classifier_hidden_dims=None,
             overwrite_training=False,
     ):
         if gcn_hidden_dims is None:
@@ -43,7 +43,7 @@ class FineTuning:
         self.temperature = temperature
         self.encoders_output_dim = encoders_output_dim
         self.projectors_output_dim = projectors_output_dim
-        self.k_order = k_order
+        self.gcn_k_order = gcn_k_order
         self.delta = delta
         self.device = device if device else torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -60,7 +60,7 @@ class FineTuning:
         self.gcn = GCN(
             input_dim=self.projectors_output_dim * 2,
             hidden_dims=gcn_hidden_dims,
-            k_order=self.k_order
+            k_order=self.gcn_k_order
         ).to(self.device)
 
         self.classifier = EmotionClassifier(
@@ -96,20 +96,46 @@ class FineTuning:
             with tqdm(self.data_loader, desc=f"Epoch {epoch}", leave=False) as pbar:
                 for xT, xT_augmented, xF, xF_augmented, y in pbar:
                     xT, xT_augmented, xF, xF_augmented, y = self._move_to_device(xT, xT_augmented, xF, xF_augmented, y)
+                    channel_count = xT.size(1)
 
                     # Reset the optimizers
                     self.optimizer.zero_grad()
 
-                    # Compute separate losses
-                    hT, LT = self._compute_time_contrastive_loss(xT, xT_augmented)
-                    hF, LF = self._compute_frequency_contrastive_loss(xF, xF_augmented)
-                    zT, zF, LA = self._compute_alignment_loss(hT, hF)
+                    # Compute separate losses channel by channel
+                    LT, LF, LA, zT_list, zF_list = 0., 0., 0., [], []
+                    for i in range(channel_count):
+                        hT, LT_i = self._compute_time_contrastive_loss(
+                            xT[:, i, :].unsqueeze(1),
+                            xT_augmented[:, i, :].unsqueeze(1)
+                        )
+                        hF, LF_i = self._compute_frequency_contrastive_loss(
+                            xF[:, i, :].unsqueeze(1),
+                            xF_augmented[:, i, :].unsqueeze(1)
+                        )
+                        zT, zF, LA_i = self._compute_alignment_loss(hT, hF)
 
+                        LT += LT_i
+                        LF += LF_i
+                        LA += LA_i
+                        zT_list.append(zT)
+                        zF_list.append(zF)
+
+                    # Average the losses over all channels
+                    LT /= channel_count
+                    LF /= channel_count
+                    LA /= channel_count
+
+                    # Stack the projected embeddings
+                    zT = torch.cat(zT_list, dim=1)
+                    zF = torch.cat(zF_list, dim=1)
+
+                    # Combine and process through GCN and classifier
                     Z = torch.cat([zT, zF], dim=-1)
-                    adj_matrix = self._build_adjacency_matrix(Z, self.delta)
+                    adj_matrix = self.gcn.build_adjacency_matrix(Z)
                     gcn_output = self.gcn(Z, adj_matrix)
                     logits = self.classifier(gcn_output.flatten())  # TODO: With flatten or not?
 
+                    # Calculate classification loss
                     Lcls = self.cross_entropy_loss(logits, y)
                     L = self.alpha * (LT + LF) + self.beta * LA + self.gamma * Lcls
                     epoch_loss += L.item()
@@ -159,28 +185,6 @@ class FineTuning:
             zF
         )
         return zT, zF, LA
-
-    @staticmethod
-    def _build_adjacency_matrix(Z, delta=0.2):
-        """
-        Construct the adjacency matrix based on cosine similarity.
-
-        Parameters:
-            - Z (torch.Tensor): The node features matrix (BATCH x N x F), where N is the number of nodes (channels)
-              and F is the feature dimension. (batch_size, V, F)
-            - delta (float): The threshold value to determine the adjacency matrix entries.
-
-        Returns:
-            - adj_matrix (torch.Tensor): The constructed adjacency matrix (N x N).
-        """
-        # Calculate the cosine similarity between each pair of node features
-        similarity_matrix = F.cosine_similarity(Z, Z.transpose(-1, -2), dim=-1)
-
-        # Apply the adjacency matrix formula
-        adj_matrix = torch.exp(similarity_matrix - 1)
-        adj_matrix[similarity_matrix < delta] = delta
-
-        return adj_matrix
 
     def _save_model(self, epoch):
         model_dicts = {

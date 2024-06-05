@@ -1,4 +1,5 @@
 import torch
+import torch.nn.functional as F
 from torch import nn
 from torch_geometric.nn.conv import ChebConv
 
@@ -32,10 +33,34 @@ class GCN(torch.nn.Module):
         # Combine all layers into a Sequential module
         self.gcn_layers = nn.Sequential(*layers)
 
-    def forward(self, x, adj):
+    def forward(self, x, edge_index, edge_weight):
         for layer in self.gcn_layers:
             if isinstance(layer, ChebConv):
-                x = layer(x, adj)
+                x = layer(x, edge_index, edge_weight)
             else:
                 x = layer(x)
         return x
+
+    @staticmethod
+    def build_adjacency_matrix(Z, delta=0.2):
+        # TODO: Use inside class directly
+
+        """
+        Construct the adjacency matrix based on cosine similarity.
+
+        Parameters:
+            - Z (torch.Tensor): The node features matrix (BATCH_SIZE x V x F), where V is the number of channels
+              and F is the feature dimension.
+            - delta (float): The threshold value to determine the adjacency matrix entries.
+
+        Returns:
+            - adj_matrix (torch.Tensor): The constructed adjacency matrix (BATCH_SIZE x V x V).
+        """
+        Z_norm = F.normalize(Z, p=2, dim=-1)  # Normalize along the feature dimension
+        sim_matrix = torch.bmm(Z_norm, Z_norm.transpose(-1, -2))  # Cosine similarity
+
+        # Apply the adjacency matrix formula
+        adj_matrix = torch.exp(sim_matrix - 1)
+        adj_matrix[sim_matrix < delta] = delta
+
+        return adj_matrix

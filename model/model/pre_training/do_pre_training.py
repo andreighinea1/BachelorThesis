@@ -45,7 +45,7 @@ class PreTraining:
             alpha=0.2, beta=1.0, temperature=0.05,
             encoders_output_dim=200, projectors_output_dim=128,
             num_layers=2, nhead=8,
-            overwrite_training=False,
+            overwrite_training=False, to_train=True,
     ):
         # region Init return values
         self.overall_elapsed_time = None
@@ -59,24 +59,24 @@ class PreTraining:
         self.device = device if device else torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.log_dir = log_dir
 
-        if pretraining_model_save_dir is not None:
-            if not os.path.exists(pretraining_model_save_dir):
-                os.makedirs(pretraining_model_save_dir)
-            if not overwrite_training and os.listdir(pretraining_model_save_dir):
-                raise Exception(f"Model folder not empty, probably already trained: {pretraining_model_save_dir}")
+        self.model_save_dir = pretraining_model_save_dir
+        self.to_train = to_train
+        self._trained = False
 
-            self.model_save_dir = pretraining_model_save_dir
+        if self.model_save_dir is not None:
+            if not os.path.exists(self.model_save_dir):
+                os.makedirs(self.model_save_dir)
+            if not overwrite_training and to_train and os.listdir(self.model_save_dir):
+                raise Exception(f"Model folder not empty, probably already trained: {self.model_save_dir}")
+
             self.model_save_path = os.path.join(self.model_save_dir, self.MODEL_ADD)
 
             self.model_final_save_dir = self.model_save_dir + self.SAVED_MODEL_DIR_ADD
             self.model_final_save_path = os.path.join(self.model_final_save_dir, self.MODEL_ADD)
         else:
-            self.model_save_dir = None
             self.model_save_path = None
             self.model_final_save_dir = None
             self.model_final_save_path = None
-
-        self._trained = False
         # endregion
 
         # region Hyperparameters
@@ -140,6 +140,8 @@ class PreTraining:
         # endregion
 
     def train(self, *, update_after_every_epoch=True, force_train=False):
+        if not self.to_train:
+            raise Exception("to_train must be True to train model")
         if self._trained and not force_train:
             raise Exception("Trying to train an already trained model!")
 
@@ -281,7 +283,7 @@ class PreTraining:
 
     def load_model(self, epoch):
         if self.model_final_save_path is None:
-            return  # Will not load model
+            raise Exception("Tried loading model with no path provided!")
 
         model_path = f"{self.model_final_save_path}__epoch_{epoch}.pt"
         print(f"Trying to load model from {model_path}")
