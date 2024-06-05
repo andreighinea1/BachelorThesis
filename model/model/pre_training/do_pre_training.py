@@ -158,7 +158,7 @@ class PreTraining:
                 # Calculate on a mini-batch
                 epoch_loss = 0
                 with tqdm(self.data_loader, desc=f"Epoch {epoch}", leave=False) as pbar:
-                    for xT, xT_augmented, xF, xF_augmented in pbar:
+                    for xT, xT_augmented, xF, xF_augmented, _y in pbar:
                         xT, xT_augmented, xF, xF_augmented = self._move_to_device(xT, xT_augmented, xF, xF_augmented)
 
                         # Reset the optimizers

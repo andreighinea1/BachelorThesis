@@ -119,6 +119,7 @@ class EEGAugmentation:
                 "EEG_Time_Augmented": xa,  # Time Augmented EEG
                 "EEG_Frequency": xF,  # Frequency domain representation
                 "EEG_Frequency_Augmented": xFa,  # Frequency Augmented EEG
+                "Verdict": row["Verdict"],
             })
 
         # Create a new DataFrame with the augmented data

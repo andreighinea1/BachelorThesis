@@ -41,17 +41,18 @@ class SeedDatasetLoader:
         # Temporary storage list for DataFrame creation
         data_records = []
 
+        self._labels = self._load_mat_file("label.mat")["label"][0]
+        self._labels = {i + 1: label for i, label in enumerate(self._labels)}
+
         # Load all files in the preprocessed_eeg_dir
         for filename in tqdm(os.listdir(self._preprocessed_eeg_dir), desc="Going through files"):
-            if filename == "label.mat":
-                self._labels = self._load_mat_file(filename)["label"]
-            else:
+            if filename != "label.mat":
                 self._process_file(filename, data_records)
 
         # Create DataFrame from records
         self._eeg_data_df = pd.DataFrame(data_records, columns=[
             "Subject", "Trial", "Trial_Prefix",
-            "Date", "Start_Frame", "EEG",
+            "Date", "Start_Frame", "EEG", "Verdict",
         ])
         self._eeg_data_df.sort_values(by=["Subject", "Trial", "Date"], inplace=True)
 
@@ -60,7 +61,7 @@ class SeedDatasetLoader:
         self._eeg_data_df = self._eeg_data_df[[
             "Subject", "Trial", "Trial_Prefix",
             "Trial_Rep",
-            "Date", "Start_Frame", "EEG",
+            "Date", "Start_Frame", "EEG", "Verdict",
         ]]
 
     def _process_file(self, filename, data_records):
@@ -74,6 +75,8 @@ class SeedDatasetLoader:
             for key, value in data.items():
                 if "_eeg" in key:
                     prefix, trial_nr = key.split("_eeg")
+                    trial_nr = int(trial_nr)
+
                     num_segments = value.shape[1] // self._window_size
                     for i in range(num_segments):
                         start_frame = i * self._window_size
@@ -82,11 +85,12 @@ class SeedDatasetLoader:
                         eeg_segment = value[:, start_frame:end_frame]
                         data_records.append({
                             "Subject": subject_nr,
-                            "Trial": int(trial_nr),
+                            "Trial": trial_nr,
                             "Trial_Prefix": prefix,
                             "Date": date_obj,
                             "Start_Frame": start_frame,
-                            "EEG": eeg_segment
+                            "EEG": eeg_segment,
+                            "Verdict": self._labels[trial_nr],
                         })
 
     def _load_mat_file(self, filename):
@@ -129,7 +133,7 @@ class SeedDatasetLoader:
             ]
         return data.iloc[0]["EEG"] if not data.empty else None
 
-    def get_labels(self) -> np.ndarray:
+    def get_labels(self) -> dict:
         return self._labels
 
     def get_channel_order(self) -> Dict[int, str]:

@@ -15,5 +15,6 @@ class EEGDataset(Dataset):
         xT_augmented = row['EEG_Time_Augmented'].clone().detach()
         xF = row['EEG_Frequency'].clone().detach()
         xF_augmented = row['EEG_Frequency_Augmented'].clone().detach()
+        y = row['Verdict'].clone().detach()
 
-        return xT, xT_augmented, xF, xF_augmented
+        return xT, xT_augmented, xF, xF_augmented, y
