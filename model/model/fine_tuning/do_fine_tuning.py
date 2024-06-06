@@ -136,10 +136,10 @@ class FineTuning:
 
         return epoch_loss / self.train_batch_size
 
-    def do_eval_epoch(self):
+    def do_eval_epoch(self, epoch):
         correct, total = 0, 0
         eval_loss = 0
-        with torch.no_grad():
+        with torch.no_grad(), tqdm(self.data_loader_eval, desc=f"Epoch {epoch}", leave=False) as pbar:
             self.ET.eval()
             self.EF.eval()
             self.PT.eval()
@@ -147,7 +147,7 @@ class FineTuning:
             self.gcn.eval()
             self.classifier.eval()
 
-            for xT, xT_augmented, xF, xF_augmented, y in self.data_loader_eval:
+            for xT, xT_augmented, xF, xF_augmented, y in pbar:
                 y, logits, L, LT, LF, LA, Lcls = self._forward_pass(
                     xT, xT_augmented, xF, xF_augmented, y, compute_grad=False
                 )
@@ -155,6 +155,9 @@ class FineTuning:
                 predictions = torch.argmax(logits, dim=1)
                 correct += (predictions == y).sum().item()
                 total += y.size(0)
+
+                # Update tqdm progress bar with the current loss
+                pbar.set_description_str(f"Epoch {epoch}, Loss: {L.item():.4f}")
 
             self.ET.train()
             self.EF.train()
@@ -187,7 +190,7 @@ class FineTuning:
                 self._save_model(epoch)
 
                 # Evaluate accuracy
-                eval_accuracy, avg_eval_loss = self.do_eval_epoch()
+                eval_accuracy, avg_eval_loss = self.do_eval_epoch(epoch)
 
                 epoch_duration = time.time() - epoch_start_time
 
