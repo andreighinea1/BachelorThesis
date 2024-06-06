@@ -11,6 +11,9 @@ from model.fine_tuning.gcn import GCN
 
 
 class FineTuning:
+    SAVED_MODEL_DIR_ADD = "_saved"
+    MODEL_ADD = "finetuned_model"
+
     def __init__(
             self, data_loader, data_loader_eval, sampling_frequency, num_classes,
             # The trained encoders and projectors
@@ -23,7 +26,7 @@ class FineTuning:
             projectors_output_dim=128,
             gcn_hidden_dims=None, gcn_k_order=3, delta=0.2,
             classifier_hidden_dims=None,
-            overwrite_training=False,
+            overwrite_training=False, to_train=True,
     ):
         if gcn_hidden_dims is None:
             gcn_hidden_dims = [128, 64]
@@ -80,16 +83,31 @@ class FineTuning:
         self.nt_xent_calculator = NTXentLoss(temperature=self.temperature)
         self.cross_entropy_loss = torch.nn.CrossEntropyLoss()
 
-        if finetuning_model_save_dir is not None:
-            if not os.path.exists(finetuning_model_save_dir):
-                os.makedirs(finetuning_model_save_dir)
-            if not overwrite_training and os.listdir(finetuning_model_save_dir):
-                raise Exception(f"Model folder not empty, probably already trained: {finetuning_model_save_dir}")
-            self.model_save_path = os.path.join(finetuning_model_save_dir, f"finetuned_model")
+        self.model_save_dir = finetuning_model_save_dir
+        self.to_train = to_train
+        self._trained = False
+
+        if self.model_save_dir is not None:
+            if not os.path.exists(self.model_save_dir):
+                os.makedirs(self.model_save_dir)
+            if not overwrite_training and to_train and os.listdir(self.model_save_dir):
+                raise Exception(f"Model folder not empty, probably already trained: {self.model_save_dir}")
+
+            self.model_save_path = os.path.join(self.model_save_dir, self.MODEL_ADD)
+
+            self.model_final_save_dir = self.model_save_dir + self.SAVED_MODEL_DIR_ADD
+            self.model_final_save_path = os.path.join(self.model_final_save_dir, self.MODEL_ADD)
         else:
             self.model_save_path = None
+            self.model_final_save_dir = None
+            self.model_final_save_path = None
 
-    def train(self):
+    def train(self, *, force_train=False):
+        if not self.to_train:
+            raise Exception("to_train must be True to train model")
+        if self._trained and not force_train:
+            raise Exception("Trying to train an already trained model!")
+
         for epoch in range(1, self.epochs + 1):
             epoch_loss = 0
             with tqdm(self.data_loader, desc=f"Epoch {epoch}", leave=False) as pbar:
@@ -239,10 +257,33 @@ class FineTuning:
                 "ET": self.ET.state_dict(),
                 "EF": self.EF.state_dict(),
                 "PT": self.PT.state_dict(),
-                "PF": self.PF.state_dict()
+                "PF": self.PF.state_dict(),
+                "gcn": self.gcn.state_dict(),
+                "classifier": self.classifier.state_dict(),
             },
-            "gcn_state_dict": self.gcn.state_dict(),
-            "classifier_state_dict": self.classifier.state_dict(),
             "optimizer_state_dict": self.optimizer.state_dict(),
         }
         torch.save(model_dicts, f"{self.model_save_path}__epoch_{epoch}.pt")
+
+    def load_model(self, epoch):
+        if self.model_final_save_path is None:
+            raise Exception("Tried loading model with no path provided!")
+
+        model_path = f"{self.model_final_save_path}__epoch_{epoch}.pt"
+        print(f"Trying to load model from {model_path}")
+
+        model_dicts = torch.load(model_path)
+        model_state_dict = model_dicts["model_state_dict"]
+        for model_type, state_dict in model_state_dict.items():
+            model = getattr(self, model_type)
+            if not isinstance(model, torch.nn.modules.module.Module):
+                raise ValueError(f"Unknown model type: {type(model)}")
+            model.load_state_dict(state_dict)
+        self.optimizer.load_state_dict(model_dicts["optimizer_state_dict"])
+        if "gcn_state_dict" in model_dicts:
+            self.gcn.load_state_dict(model_dicts["gcn_state_dict"])
+        if "classifier_state_dict" in model_dicts:
+            self.classifier.load_state_dict(model_dicts["classifier_state_dict"])
+
+        self._trained = True
+        print(f"Loaded model from {model_path}")
