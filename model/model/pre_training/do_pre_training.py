@@ -159,7 +159,9 @@ class PreTraining:
                 epoch_loss = 0
                 with tqdm(self.data_loader, desc=f"Epoch {epoch}", leave=False) as pbar:
                     for xT, xT_augmented, xF, xF_augmented, _y in pbar:
-                        xT, xT_augmented, xF, xF_augmented = self._move_to_device(xT, xT_augmented, xF, xF_augmented)
+                        xT, xT_augmented, xF, xF_augmented = self._move_to_device(
+                            xT, xT_augmented, xF, xF_augmented
+                        )
 
                         # Reset the optimizers
                         self.optimizer.zero_grad()
@@ -218,6 +220,7 @@ class PreTraining:
         self.overall_elapsed_time = time.time() - overall_start_time
         self.overall_formatted_time = str(timedelta(seconds=self.overall_elapsed_time))[:-3]
         print(
+            f"Pre-training completed. "
             f"Last epoch loss: {last_epoch_loss:.4f}. "
             f"Time taken to train: {self.overall_formatted_time}"
         )
