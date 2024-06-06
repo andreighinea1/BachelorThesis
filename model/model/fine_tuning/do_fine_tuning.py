@@ -38,6 +38,9 @@ class FineTuning:
         if classifier_hidden_dims is None:
             classifier_hidden_dims = [1024, 128]
 
+        self.train_batch_size = len(data_loader)
+        self.eval_batch_size = len(data_loader_eval)
+
         self.data_loader = data_loader
         self.data_loader_eval = data_loader_eval
         self.sampling_frequency = sampling_frequency
@@ -108,6 +111,62 @@ class FineTuning:
             self.model_final_save_dir = None
             self.model_final_save_path = None
 
+    def _do_train_epoch(self, epoch):
+        epoch_loss = 0
+        with tqdm(self.data_loader, desc=f"Epoch {epoch}", leave=False) as pbar:
+            for xT, xT_augmented, xF, xF_augmented, y in pbar:
+                xT, xT_augmented, xF, xF_augmented, y = self._move_to_device(
+                    xT, xT_augmented, xF, xF_augmented, y
+                )
+
+                # Reset the optimizers
+                self.optimizer.zero_grad()
+
+                y, logits, L, LT, LF, LA, Lcls = self._forward_pass(
+                    xT, xT_augmented, xF, xF_augmented, y
+                )
+                epoch_loss += L.item()
+
+                # Backpropagation
+                L.backward()
+                self.optimizer.step()
+
+                # Update tqdm progress bar with the current loss
+                pbar.set_description_str(f"Epoch {epoch}, Loss: {L.item():.4f}")
+
+        return epoch_loss / self.train_batch_size
+
+    def do_eval_epoch(self):
+        correct, total = 0, 0
+        eval_loss = 0
+        with torch.no_grad():
+            self.ET.eval()
+            self.EF.eval()
+            self.PT.eval()
+            self.PF.eval()
+            self.gcn.eval()
+            self.classifier.eval()
+
+            for xT, xT_augmented, xF, xF_augmented, y in self.data_loader_eval:
+                y, logits, L, LT, LF, LA, Lcls = self._forward_pass(
+                    xT, xT_augmented, xF, xF_augmented, y, compute_grad=False
+                )
+                eval_loss += L.item()
+                predictions = torch.argmax(logits, dim=1)
+                correct += (predictions == y).sum().item()
+                total += y.size(0)
+
+            self.ET.train()
+            self.EF.train()
+            self.PT.train()
+            self.PF.train()
+            self.gcn.train()
+            self.classifier.train()
+
+        eval_accuracy = correct / total
+        avg_eval_loss = eval_loss / self.eval_batch_size
+        return eval_accuracy, avg_eval_loss
+
     def train(self, *, update_after_every_epoch=True, force_train=False):
         if not self.to_train:
             raise Exception("to_train must be True to train model")
@@ -115,134 +174,37 @@ class FineTuning:
             raise Exception("Trying to train an already trained model!")
 
         writer = SummaryWriter(log_dir=self.log_dir) if self.log_dir is not None else None
-        batch_count = len(self.data_loader)
         overall_start_time = time.time()
 
         with tqdm(total=self.epochs, desc="Fine-Tuning Progress", leave=False, unit="epoch") as overall_pbar:
             for epoch in range(1, self.epochs + 1):
-                epoch_start_time = time.time()
-                epoch_loss = 0
+                epoch_start_time = time.time()  # TODO: Do timing with a `with` block
 
-                with tqdm(self.data_loader, desc=f"Epoch {epoch}", leave=False) as pbar:
-                    for xT, xT_augmented, xF, xF_augmented, y in pbar:
-                        xT, xT_augmented, xF, xF_augmented, y = self._move_to_device(xT, xT_augmented, xF, xF_augmented,
-                                                                                     y)
-                        channel_count = xT.size(1)
-
-                        # Reset the optimizers
-                        self.optimizer.zero_grad()
-
-                        # Compute separate losses channel by channel, initialized as tensors
-                        LT = torch.tensor(0.0, device=self.device, requires_grad=True)
-                        LF = torch.tensor(0.0, device=self.device, requires_grad=True)
-                        LA = torch.tensor(0.0, device=self.device, requires_grad=True)
-                        zT_list, zF_list = [], []
-                        for i in range(channel_count):
-                            hT, LT_i = self._compute_time_contrastive_loss(
-                                xT[:, i, :],
-                                xT_augmented[:, i, :]
-                            )
-                            hF, LF_i = self._compute_frequency_contrastive_loss(
-                                xF[:, i, :],
-                                xF_augmented[:, i, :]
-                            )
-                            zT, zF, LA_i = self._compute_alignment_loss(hT, hF)
-
-                            LT = LT + LT_i
-                            LF = LF + LF_i
-                            LA = LA + LA_i
-                            zT_list.append(zT)
-                            zF_list.append(zF)
-
-                        # Average the losses over all channels
-                        LT = LT / channel_count
-                        LF = LF / channel_count
-                        LA = LA / channel_count
-
-                        # Stack the projected embeddings
-                        zT = torch.stack(zT_list, dim=1)
-                        zF = torch.stack(zF_list, dim=1)
-
-                        # Combine and process through GCN and classifier
-                        Z = torch.cat([zT, zF], dim=-1)
-                        adj_matrix = self.gcn.build_adjacency_matrix(Z)
-                        gcn_output = self.gcn(Z, adj_matrix)
-                        logits = self.classifier(gcn_output.flatten(start_dim=1))
-
-                        # Calculate classification loss
-                        Lcls = self.cross_entropy_loss(logits, y)
-                        L = self.alpha * (LT + LF) + self.beta * LA + self.gamma * Lcls
-                        epoch_loss += L.item()
-
-                        # Backpropagation
-                        L.backward()
-                        self.optimizer.step()
-
-                        # Update tqdm progress bar with the current loss
-                        pbar.set_description_str(f"Epoch {epoch}, Loss: {L.item():.4f}")
+                # Do a train loop
+                avg_epoch_loss = self._do_train_epoch(epoch)
 
                 # Save the model every 1 epoch
                 self._save_model(epoch)
 
                 # Evaluate accuracy
-                # TODO: Don't repeat code
-                correct, total = 0, 0
-                with torch.no_grad():
-                    self.ET.eval()
-                    self.EF.eval()
-                    self.PT.eval()
-                    self.PF.eval()
-                    self.gcn.eval()
-                    self.classifier.eval()
+                eval_accuracy, avg_eval_loss = self.do_eval_epoch()
 
-                    for xT, xT_augmented, xF, xF_augmented, y in self.data_loader_eval:
-                        xT, xT_augmented, xF, xF_augmented, y = self._move_to_device(
-                            xT, xT_augmented, xF, xF_augmented, y
-                        )
-
-                        channel_count = xT.size(1)
-                        zT_list, zF_list = [], []
-                        for i in range(channel_count):
-                            hT, _ = self._compute_time_contrastive_loss(xT[:, i, :], xT_augmented[:, i, :])
-                            hF, _ = self._compute_frequency_contrastive_loss(xF[:, i, :], xF_augmented[:, i, :])
-                            zT, zF, _ = self._compute_alignment_loss(hT, hF)
-                            zT_list.append(zT)
-                            zF_list.append(zF)
-
-                        zT = torch.stack(zT_list, dim=1)
-                        zF = torch.stack(zF_list, dim=1)
-                        Z = torch.cat([zT, zF], dim=-1)
-                        adj_matrix = self.gcn.build_adjacency_matrix(Z)
-                        gcn_output = self.gcn(Z, adj_matrix)
-                        logits = self.classifier(gcn_output.flatten(start_dim=1))
-
-                        predictions = torch.argmax(logits, dim=1)
-                        correct += (predictions == y).sum().item()
-                        total += y.size(0)
-
-                    self.ET.train()
-                    self.EF.train()
-                    self.PT.train()
-                    self.PF.train()
-                    self.gcn.train()
-                    self.classifier.train()
-
-                accuracy = correct / total
                 epoch_duration = time.time() - epoch_start_time
-                avg_epoch_loss = epoch_loss / batch_count
 
                 # Log metrics to TensorBoard
                 if writer is not None:
-                    writer.add_scalar("Loss/epoch", avg_epoch_loss, epoch)
-                    writer.add_scalar("Accuracy/epoch", accuracy, epoch)
+                    writer.add_scalar("Train Loss/epoch", avg_epoch_loss, epoch)
+                    writer.add_scalar("Eval Loss/epoch", avg_eval_loss, epoch)
+                    writer.add_scalar("Eval Accuracy/epoch", eval_accuracy, epoch)
                     writer.add_scalar("Time/epoch", epoch_duration, epoch)
 
                 # Update overall progress bar
                 if update_after_every_epoch:
                     overall_pbar.set_description_str(
                         f"Epoch {epoch},"
-                        f"Loss: {avg_epoch_loss:.4f},"
-                        f"Accuracy: {accuracy:.4f}"
+                        f"Train Loss: {avg_epoch_loss:.4f},"
+                        f"Eval Accuracy: {eval_accuracy:.4f},"
+                        f"Eval Loss: {avg_eval_loss:.4f}"
                     )
                 overall_pbar.update(1)
 
@@ -251,8 +213,9 @@ class FineTuning:
         print(
             f"Fine-tuning completed. "
             f"Time taken: {overall_formatted_time}, "
-            f"Final Loss: {avg_epoch_loss:.4f}, "
-            f"Final Accuracy: {accuracy:.4f}"
+            f"Final Train Loss: {avg_epoch_loss:.4f}, "
+            f"Final Eval Accuracy: {eval_accuracy:.4f}"
+            f"Final Eval Loss: {avg_eval_loss:.4f}"
         )
 
         if writer is not None:
@@ -263,6 +226,56 @@ class FineTuning:
         self._trained = True
 
         return
+
+    def _forward_pass(self, xT, xT_augmented, xF, xF_augmented, y, compute_grad=True):
+        xT, xT_augmented, xF, xF_augmented, y = self._move_to_device(
+            xT, xT_augmented, xF, xF_augmented, y
+        )
+        channel_count = xT.size(1)
+
+        # Compute separate losses channel by channel, initialized as tensors
+        LT = torch.tensor(0.0, device=self.device, requires_grad=compute_grad)
+        LF = torch.tensor(0.0, device=self.device, requires_grad=compute_grad)
+        LA = torch.tensor(0.0, device=self.device, requires_grad=compute_grad)
+        zT_list, zF_list = [], []
+
+        for i in range(channel_count):
+            hT, LT_i = self._compute_time_contrastive_loss(
+                xT[:, i, :],
+                xT_augmented[:, i, :]
+            )
+            hF, LF_i = self._compute_frequency_contrastive_loss(
+                xF[:, i, :],
+                xF_augmented[:, i, :]
+            )
+            zT, zF, LA_i = self._compute_alignment_loss(hT, hF)
+
+            LT = LT + LT_i
+            LF = LF + LF_i
+            LA = LA + LA_i
+            zT_list.append(zT)
+            zF_list.append(zF)
+
+        # Average the losses over all channels
+        LT = LT / channel_count
+        LF = LF / channel_count
+        LA = LA / channel_count
+
+        # Stack the projected embeddings
+        zT = torch.stack(zT_list, dim=1)
+        zF = torch.stack(zF_list, dim=1)
+
+        # Combine and process through GCN and classifier
+        Z = torch.cat([zT, zF], dim=-1)
+        adj_matrix = self.gcn.build_adjacency_matrix(Z)
+        gcn_output = self.gcn(Z, adj_matrix)
+        logits = self.classifier(gcn_output.flatten(start_dim=1))
+
+        # Calculate classification loss and overall loss
+        Lcls = self.cross_entropy_loss(logits, y)
+        L = self.alpha * (LT + LF) + self.beta * LA + self.gamma * Lcls
+
+        return y, logits, L, LT, LF, LA, Lcls
 
     def _move_to_device(self, *args):
         """ Move batches of data to the `device` """
