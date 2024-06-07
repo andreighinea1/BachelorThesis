@@ -1,23 +1,28 @@
-- To speak about in bachelor thesis:
-    - Related Work (BRIEFLY, in 1 subchapter each):
-        - EEG-based Emotion Recognition
-        - Cross-Corpus EEG Emotion Recognition
-        - Contrastive Learning
-    - 3.3 Model Architecture:
-        - NT-Xent (the normalized temperature-scaled cross entropy loss)
-        - Self-supervised Pre-training
-            - Time Domain Contrastive Learning
-            - Frequency Domain Contrastive Learning
-            - Time-Frequency Domain Contrastive Learning
-        - Supervised Fine-tuning
-            - Graph Convolutional Network
-            - Emotion Classification
-    - 3.2.2 Data Augmentation:
-        - GAN:
-            - In "Theoretical Background":
-                - Add the diagram as well
-            - In "3.2.2 Data Augmentation -> GAN-based Augmentation"
-                - ADD DETAILS ABOUT HOW MUCH DATA WAS ADDED
+- To speak about in bachelor thesis
+    - Chapter 1 Introduction
+        - 1.2 Proposed Solution
+            -> Update with GAN
+            -> Update with better details about EPOC X
+            -> Don't use JCFA when I'm talking about the architecture of the model, use my model name "EmotionWave"
+        - 1.3 Theoretical Background
+            -> Add about the K-order Chebyshev graph (Reference at `Chebyshev [30]`), as I did the code implementation myself
+    - Chapter 3 Methodology
+        -> Add a `Data Collection` section
+            -> About the data collection from the EMOTIV EPOC X
+            -> Fine-tuning using that data
+        - 3.2 Data Preprocessing
+            - 3.2.2 Data Augmentation
+                - GAN-based Augmentation
+                    -> ADD DETAILS ABOUT HOW MUCH DATA WAS ADDED
+        - 3.3 Model Architecture
+            - NT-Xent (the normalized temperature-scaled cross entropy loss)
+            - Self-supervised Pre-training
+                -> Time Domain Contrastive Learning
+                -> Frequency Domain Contrastive Learning
+                -> Time-Frequency Domain Contrastive Learning
+            - Supervised Fine-tuning
+                -> Graph Convolutional Network
+                -> Emotion Classification
 
 
 
@@ -27,9 +32,7 @@
         - phase-shifting
         - time-warping -> Paper: "EEG time-warping to study non-strictly-periodic EEG signals related to the production of rhythmic movements"
     - Graph Neural Networks Enhancements:
-        - Experiment with more sophisticated GNN architectures to capture spatial relationships between EEG channels:
-            - Graph Attention Networks
-            - GraphSAGE
+        - Something other than `K-order Chebyshev graph convolution`
     - Hyperparameter Optimization:
         - Bayesian Optimization
         - Hyperband
