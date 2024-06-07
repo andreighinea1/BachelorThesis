@@ -5,7 +5,10 @@
             -> Update with better details about EPOC X
             -> Don't use JCFA when I'm talking about the architecture of the model, use my model name "EmotionWave"
         - 1.3 Theoretical Background
-            -> Add about the K-order Chebyshev graph (Reference at `Chebyshev [30]`), as I did the code implementation myself
+            - 1.3.2 K-order Chebyshev Graph Convolution
+                -> Talk a bit about the code implementation
+            -> NT-Xent (the normalized temperature-scaled cross entropy loss)
+                -> Talk a bit about the code implementation
     - Chapter 3 Methodology
         -> Add a `Data Collection` section
             -> About the data collection from the EMOTIV EPOC X
@@ -15,7 +18,8 @@
                 - GAN-based Augmentation
                     -> ADD DETAILS ABOUT HOW MUCH DATA WAS ADDED
         - 3.3 Model Architecture
-            - NT-Xent (the normalized temperature-scaled cross entropy loss)
+            -> Replace everything that's there
+            -> Just mention using NT-Xent
             - Self-supervised Pre-training
                 -> Time Domain Contrastive Learning
                 -> Frequency Domain Contrastive Learning
@@ -23,6 +27,12 @@
             - Supervised Fine-tuning
                 -> Graph Convolutional Network
                 -> Emotion Classification
+    - Chapter 4 Project Planning and Management
+        - 4.2 Gantt Chart
+            -> Take a screenshot of a higher resolution, and change from 150% to lower
+        - 4.2 SWOT Analysis
+            -> Make it actually relevant
+            -> Make a nice image with it in Canva
 
 
 
