@@ -101,9 +101,15 @@ class SeedDatasetLoader:
         self._channel_order = pd.read_excel(self._channel_order_filepath, header=None, index_col=None)[0].to_dict()
         return
 
-    def plot_random_eeg(self):
+    def plot_random_eeg(self, *, verdict=None, with_bg_lines=True):
+        _df = self._eeg_data_df
+        if verdict is not None:
+            unique_verdicts = list(_df["Verdict"].unique())
+            print(f"Chose verdict {verdict} out of possible verdicts: {unique_verdicts}")
+            _df = _df[_df["Verdict"] == verdict]
+
         # Randomly select an EEG
-        random_row = self._eeg_data_df.sample(n=1).iloc[0]
+        random_row = _df.sample(n=1).iloc[0]
         random_eeg = random_row["EEG"]
         random_channel = random.randint(0, 61)
 
@@ -122,7 +128,7 @@ class SeedDatasetLoader:
         )
         plt.xlabel("Time (seconds)")
         plt.ylabel("Amplitude")
-        plt.grid(True)
+        plt.grid(with_bg_lines)
         plt.show()
 
     def get_subject_data(self, subject_nr: int, trial_nr: int, trial_rep: int):

@@ -1,0 +1,50 @@
+- To speak about in bachelor thesis:
+    - Related Work (BRIEFLY, in 1 subchapter each):
+        - EEG-based Emotion Recognition
+        - Cross-Corpus EEG Emotion Recognition
+        - Contrastive Learning
+    - 3.3 Model Architecture:
+        - NT-Xent (the normalized temperature-scaled cross entropy loss)
+        - Self-supervised Pre-training
+            - Time Domain Contrastive Learning
+            - Frequency Domain Contrastive Learning
+            - Time-Frequency Domain Contrastive Learning
+        - Supervised Fine-tuning
+            - Graph Convolutional Network
+            - Emotion Classification
+    - 3.2.2 Data Augmentation:
+        - GAN:
+            - In "Theoretical Background":
+                - Add the diagram as well
+            - In "3.2.2 Data Augmentation -> GAN-based Augmentation"
+                - ADD DETAILS ABOUT HOW MUCH DATA WAS ADDED
+
+
+
+- Innovations:
+    - Advanced Data Augmentation Techniques:
+        - GAN
+        - phase-shifting
+        - time-warping -> Paper: "EEG time-warping to study non-strictly-periodic EEG signals related to the production of rhythmic movements"
+    - Graph Neural Networks Enhancements:
+        - Experiment with more sophisticated GNN architectures to capture spatial relationships between EEG channels:
+            - Graph Attention Networks
+            - GraphSAGE
+    - Hyperparameter Optimization:
+        - Bayesian Optimization
+        - Hyperband
+    - Explainability and Interpretability: SHAP, LIME
+    - Multi-modal Fusion:
+        - Integrate additional physiological signals (e.g., visual stuff from SEED)
+    - Transformer-based Enhancements:
+        - (BERT, GPT-style transformers) to improve the encoding of time and frequency domain signals.
+
+
+
+
+Cross-Corpus:
+- Load SEED-V and do cross-corpus
+- They don't consider different labels => Do experiment where I have multiple labels
+
+Graph Convolutional Network:
+- Try others than the K-order Chebyshev graph convolution

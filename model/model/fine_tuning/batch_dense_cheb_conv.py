@@ -26,7 +26,7 @@ class BatchDenseChebConv(nn.Module):
     Example
     -------
     >>> import torch
-    >>> from model.fine_tuning.dense_cheb_conv import DenseChebConv
+    >>> from model.fine_tuning.batch_dense_cheb_conv import BatchDenseChebConv
     >>>
     >>> feat = torch.ones(6, 10)
     >>> adj = torch.tensor([[0., 0., 1., 0., 0., 0.],
@@ -35,7 +35,7 @@ class BatchDenseChebConv(nn.Module):
     ...                     [0., 0., 1., 0., 0., 1.],
     ...                     [0., 0., 0., 1., 0., 0.],
     ...                     [0., 0., 0., 0., 0., 0.]])
-    >>> conv = DenseChebConv(10, 2, 2)
+    >>> conv = BatchDenseChebConv(10, 2, 2)
     >>> res = conv(adj, feat)
     >>> res
     tensor([[-0.8028, -1.7049],
