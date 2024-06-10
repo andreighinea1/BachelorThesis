@@ -7,16 +7,17 @@ import cv2
 import moviepy.editor as mp
 import numpy as np
 
-QUIT_KEY = "q"
-SKIP_KEY = "s"  # Used to skip messages
+PAUSE_KEY = ord(" ")
+QUIT_KEY = ord("q")
+SKIP_KEY = ord("s")  # Used to skip messages only
 
 
 def _pause_experiment():
     while True:
         key = cv2.waitKey(1) & 0xFF
-        if key == ord(" "):
+        if key == PAUSE_KEY:
             return
-        elif key == ord(QUIT_KEY):
+        elif key == QUIT_KEY:
             cv2.destroyAllWindows()
             sys.exit()
 
@@ -28,6 +29,11 @@ class EEGEmotionExperiment:
         "positive": 1,
         "neutral": 0,
         "negative": -1,
+    }
+
+    assessing_dict = {
+        ord(str(i)): i
+        for i in range(6)  # Scores from 0 to 5 inclusive
     }
 
     def __init__(
@@ -121,29 +127,36 @@ class EEGEmotionExperiment:
                 break
             cv2.imshow(self.WINDOW_NAME, frame)
             key = cv2.waitKey(25) & 0xFF
-            if key == ord(" "):
+            if key == PAUSE_KEY:
                 _pause_experiment()
-            elif key == ord(QUIT_KEY):
+            elif key == QUIT_KEY:
                 cv2.destroyAllWindows()
                 sys.exit()
-            # elif key == ord(SKIP_KEY):  # TODO: Make more complex system to skip videos to not skip them by mistake
-            #     return
+            elif key == SKIP_KEY:  # TODO: Make more complex system to skip videos to not skip them by mistake
+                return
         cap.release()
 
-    def _show_message(self, message, duration):
+    def _show_message(self, message, duration, *, assessing=False):
         start_time = time.time()
         while time.time() - start_time < duration:
             img = 255 * np.ones((500, 800, 3), dtype=np.uint8)
             cv2.putText(img, message, (50, 250), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 0), 3, cv2.LINE_AA)
             cv2.imshow(self.WINDOW_NAME, img)
             key = cv2.waitKey(1) & 0xFF
-            if key == ord(" "):
+            if key == PAUSE_KEY:
                 _pause_experiment()
-            elif key == ord(QUIT_KEY):
+            elif key == QUIT_KEY:
                 cv2.destroyAllWindows()
                 sys.exit()
-            elif key == ord(SKIP_KEY):
+            elif key == SKIP_KEY:
                 return
+            elif assessing and key != 255:
+                if key in self.assessing_dict:
+                    score = self.assessing_dict[key]
+                    # TODO:
+                    #  Save this score for this video in a dictionary in the class,
+                    #  which would be saved continuously on disk
+                    return
 
     def run_experiment(self):
         cv2.namedWindow(self.WINDOW_NAME, cv2.WND_PROP_FULLSCREEN)
@@ -183,7 +196,7 @@ class EEGEmotionExperiment:
                 elif step == "Movie clip":
                     self._play_video(segment_path)
                 elif step == "Self-assessment":
-                    self._show_message("Please assess your emotions", duration)
+                    self._show_message("Please assess your emotions", duration, assessing=True)
                 elif step == "Rest":
                     self._show_message("Rest", duration)
 
