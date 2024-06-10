@@ -1,5 +1,6 @@
 import os
 import random
+import sys
 import time
 
 import cv2
@@ -9,12 +10,17 @@ import numpy as np
 
 def _pause_experiment():
     while True:
-        if cv2.waitKey(1) & 0xFF == ord(' '):
+        key = cv2.waitKey(1) & 0xFF
+        if key == ord(' '):
             return
+        elif key == ord('q'):
+            cv2.destroyAllWindows()
+            sys.exit()
 
 
 class EEGEmotionExperiment:
     VIDEOS_PATH = "./dataset_collection/videos"
+    WINDOW_NAME = "EEG Emotion Recognition Experiment"
     VERDICTS_DICT = {
         "positive": 1,
         "neutral": 0,
@@ -104,31 +110,38 @@ class EEGEmotionExperiment:
                 segment_output_file_path = os.path.join(segment_base_path, segment_file_name)
                 segment.write_videofile(segment_output_file_path, codec="libx264")
 
-    # 3
-    @staticmethod
-    def _play_video(video_path):
+    def _play_video(self, video_path):
         cap = cv2.VideoCapture(video_path)
         while cap.isOpened():
             ret, frame = cap.read()
             if not ret:
                 break
-            cv2.imshow('EEG Emotion Recognition Experiment', frame)
-            if cv2.waitKey(25) & 0xFF == ord(' '):
+            cv2.imshow(self.WINDOW_NAME, frame)
+            key = cv2.waitKey(25) & 0xFF
+            if key == ord(' '):
                 _pause_experiment()
+            elif key == ord('q'):
+                cv2.destroyAllWindows()
+                sys.exit()
         cap.release()
-        cv2.destroyAllWindows()
 
-    @staticmethod
-    def _show_message(message, duration):
+    def _show_message(self, message, duration):
         start_time = time.time()
         while time.time() - start_time < duration:
             img = 255 * np.ones((500, 800, 3), dtype=np.uint8)
             cv2.putText(img, message, (50, 250), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 0), 3, cv2.LINE_AA)
-            cv2.imshow('EEG Emotion Recognition Experiment', img)
-            if cv2.waitKey(1) & 0xFF == ord(' '):
+            cv2.imshow(self.WINDOW_NAME, img)
+            key = cv2.waitKey(1) & 0xFF
+            if key == ord(' '):
                 _pause_experiment()
+            elif key == ord('q'):
+                cv2.destroyAllWindows()
+                sys.exit()
 
     def run_experiment(self):
+        cv2.namedWindow(self.WINDOW_NAME, cv2.WND_PROP_FULLSCREEN)
+        cv2.setWindowProperty(self.WINDOW_NAME, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+
         # Get the list of segmented videos
         segment_files = {
             emotion: sorted([
@@ -152,6 +165,9 @@ class EEGEmotionExperiment:
         # Define the experiment protocol
         protocol = [("Hint of start", 5), ("Movie clip", None), ("Self-assessment", 45), ("Rest", 15)]
 
+        # Give 1 minute to prepare for the start of the whole experiment
+        self._show_message("Prepare for experiment", 60)
+
         # Main experiment loop
         for segment_path in order:
             for step, duration in protocol:
@@ -164,4 +180,5 @@ class EEGEmotionExperiment:
                 elif step == "Rest":
                     self._show_message("Rest", duration)
 
+        cv2.destroyAllWindows()
         return
