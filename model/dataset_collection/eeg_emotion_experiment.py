@@ -7,13 +7,16 @@ import cv2
 import moviepy.editor as mp
 import numpy as np
 
+QUIT_KEY = "q"
+SKIP_KEY = "s"  # Used to skip messages
+
 
 def _pause_experiment():
     while True:
         key = cv2.waitKey(1) & 0xFF
-        if key == ord(' '):
+        if key == ord(" "):
             return
-        elif key == ord('q'):
+        elif key == ord(QUIT_KEY):
             cv2.destroyAllWindows()
             sys.exit()
 
@@ -74,12 +77,12 @@ class EEGEmotionExperiment:
                 if self.ignore_existing_files:
                     print(f"{str_msg}, ignoring existing videos")
                     continue
-                raise Exception(f"{str_msg}, and didn't allow overwriting it")
+                raise Exception(f"{str_msg}, and did not allow overwriting it")
 
             video_files = [
                 os.path.join(dir_path, file_name)
                 for file_name in os.listdir(dir_path)
-                if file_name.endswith('.mp4') and "_concatenated" not in file_name
+                if file_name.endswith(".mp4") and "_concatenated" not in file_name
             ]
             self._concatenate_videos(video_files, concatenated_path)
 
@@ -118,11 +121,13 @@ class EEGEmotionExperiment:
                 break
             cv2.imshow(self.WINDOW_NAME, frame)
             key = cv2.waitKey(25) & 0xFF
-            if key == ord(' '):
+            if key == ord(" "):
                 _pause_experiment()
-            elif key == ord('q'):
+            elif key == ord(QUIT_KEY):
                 cv2.destroyAllWindows()
                 sys.exit()
+            # elif key == ord(SKIP_KEY):  # TODO: Make more complex system to skip videos to not skip them by mistake
+            #     return
         cap.release()
 
     def _show_message(self, message, duration):
@@ -132,11 +137,13 @@ class EEGEmotionExperiment:
             cv2.putText(img, message, (50, 250), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 0), 3, cv2.LINE_AA)
             cv2.imshow(self.WINDOW_NAME, img)
             key = cv2.waitKey(1) & 0xFF
-            if key == ord(' '):
+            if key == ord(" "):
                 _pause_experiment()
-            elif key == ord('q'):
+            elif key == ord(QUIT_KEY):
                 cv2.destroyAllWindows()
                 sys.exit()
+            elif key == ord(SKIP_KEY):
+                return
 
     def run_experiment(self):
         cv2.namedWindow(self.WINDOW_NAME, cv2.WND_PROP_FULLSCREEN)
@@ -147,7 +154,7 @@ class EEGEmotionExperiment:
             emotion: sorted([
                 os.path.join(segmented_dir, file)
                 for file in os.listdir(segmented_dir)
-                if file.endswith('.mp4')
+                if file.endswith(".mp4")
             ])
             for emotion, segmented_dir in self.segmented_dirs.items()
         }
