@@ -1,8 +1,16 @@
 import os
+import random
 import time
 
+import cv2
 import moviepy.editor as mp
-import pygame
+import numpy as np
+
+
+def _pause_experiment():
+    while True:
+        if cv2.waitKey(1) & 0xFF == ord(' '):
+            return
 
 
 class EEGEmotionExperiment:
@@ -96,11 +104,31 @@ class EEGEmotionExperiment:
                 segment_output_file_path = os.path.join(segment_base_path, segment_file_name)
                 segment.write_videofile(segment_output_file_path, codec="libx264")
 
-    def run_experiment(self):
-        def play_video(video_path):
-            clip = mp.VideoFileClip(video_path)
-            clip.preview(fullscreen=True)
+    # 3
+    @staticmethod
+    def _play_video(video_path):
+        cap = cv2.VideoCapture(video_path)
+        while cap.isOpened():
+            ret, frame = cap.read()
+            if not ret:
+                break
+            cv2.imshow('EEG Emotion Recognition Experiment', frame)
+            if cv2.waitKey(25) & 0xFF == ord(' '):
+                _pause_experiment()
+        cap.release()
+        cv2.destroyAllWindows()
 
+    @staticmethod
+    def _show_message(message, duration):
+        start_time = time.time()
+        while time.time() - start_time < duration:
+            img = 255 * np.ones((500, 800, 3), dtype=np.uint8)
+            cv2.putText(img, message, (50, 250), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 0), 3, cv2.LINE_AA)
+            cv2.imshow('EEG Emotion Recognition Experiment', img)
+            if cv2.waitKey(1) & 0xFF == ord(' '):
+                _pause_experiment()
+
+    def run_experiment(self):
         # Get the list of segmented videos
         segment_files = {
             emotion: sorted([
@@ -112,52 +140,28 @@ class EEGEmotionExperiment:
         }
 
         # Generate the dynamic order of segments
+        emotions = list(segment_files.keys())
+        assert set(emotions) == {"positive", "negative", "neutral"}
+        random.shuffle(emotions)
+
         order = []
         while all(segment_files.values()):
-            for emotion in ["positive", "negative", "neutral"]:
+            for emotion in emotions:
                 order.append(segment_files[emotion].pop(0))
-        print("order:", order)
-        import sys
-        sys.exit()
 
         # Define the experiment protocol
-        protocol = [("Hint of start", 5), ("Movie clip", 240), ("Self-assessment", 45), ("Rest", 15)]
-
-        # Start pygame - or..?
-        # TODO: Maybe don't use pygame?
-        #  Or idk, but it doesn't play the video at all.
-        #  And it shouldn't fix the video playing to 240s,
-        #  it should just play the video for however much time it is
-        #  (the video's already segmented after all)
-        pygame.init()
-        screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
-        pygame.display.set_caption('EEG Emotion Recognition Experiment')
-
-        def show_message(message, duration):
-            font = pygame.font.Font(None, 74)
-            text = font.render(message, True, (255, 255, 255))
-            screen.fill((0, 0, 0))
-            screen.blit(
-                text,
-                (
-                    (screen.get_width() - text.get_width()) // 2,
-                    (screen.get_height() - text.get_height()) // 2
-                )
-            )
-            pygame.display.flip()
-            time.sleep(duration)
+        protocol = [("Hint of start", 5), ("Movie clip", None), ("Self-assessment", 45), ("Rest", 15)]
 
         # Main experiment loop
         for segment_path in order:
             for step, duration in protocol:
                 if step == "Hint of start":
-                    show_message("Hint of start", duration)
+                    self._show_message("Hint of start", duration)
                 elif step == "Movie clip":
-                    play_video(segment_path)
+                    self._play_video(segment_path)
                 elif step == "Self-assessment":
-                    show_message("Please assess your emotions", duration)
+                    self._show_message("Please assess your emotions", duration)
                 elif step == "Rest":
-                    show_message("Rest", duration)
+                    self._show_message("Rest", duration)
 
-        # Clean up
-        pygame.quit()
+        return
