@@ -6,6 +6,7 @@ import time
 import cv2
 import moviepy.editor as mp
 import numpy as np
+import ujson
 
 PAUSE_KEY = ord(" ")
 QUIT_KEY = ord("q")
@@ -23,15 +24,17 @@ def _pause_experiment():
 
 
 class EEGEmotionExperiment:
-    VIDEOS_PATH = "./dataset_collection/videos"
-    WINDOW_NAME = "EEG Emotion Recognition Experiment"
+    EXPERIMENT_WINDOW_NAME = "EEG Emotion Recognition Experiment"
+    BASE_PATH = "./dataset_collection"
+    VIDEOS_DIR_PATH = f"{BASE_PATH}/videos"
+    SCORES_FILE_PATH = f"{BASE_PATH}/scores.json"
+
     VERDICTS_DICT = {
         "positive": 1,
         "neutral": 0,
         "negative": -1,
     }
-
-    assessing_dict = {
+    scoring_dict = {
         ord(str(i)): i
         for i in range(6)  # Scores from 0 to 5 inclusive
     }
@@ -51,10 +54,12 @@ class EEGEmotionExperiment:
         self.overwrite_concatenated_videos = overwrite_concatenated_videos
         self.ignore_existing_files = ignore_existing_files
 
+        self.scores = dict()
+
         self.video_dirs = {
             emotion: emotion_path
             for emotion in self.VERDICTS_DICT.keys()
-            if (emotion_path := os.path.join(self.VIDEOS_PATH, emotion))
+            if (emotion_path := os.path.join(self.VIDEOS_DIR_PATH, emotion))
             if os.path.exists(emotion_path) and os.listdir(emotion_path)
         }
         self.concatenated_videos = {
@@ -119,13 +124,21 @@ class EEGEmotionExperiment:
                 segment_output_file_path = os.path.join(segment_base_path, segment_file_name)
                 segment.write_videofile(segment_output_file_path, codec="libx264")
 
+    # 3
+    def _save_scores(self):
+        with open(self.SCORES_FILE_PATH, "w") as f:
+            ujson.dump(
+                self.scores, f,
+                escape_forward_slashes=False, indent=2, sort_keys=True, ensure_ascii=False
+            )
+
     def _play_video(self, video_path):
         cap = cv2.VideoCapture(video_path)
         while cap.isOpened():
             ret, frame = cap.read()
             if not ret:
                 break
-            cv2.imshow(self.WINDOW_NAME, frame)
+            cv2.imshow(self.EXPERIMENT_WINDOW_NAME, frame)
             key = cv2.waitKey(25) & 0xFF
             if key == PAUSE_KEY:
                 _pause_experiment()
@@ -136,8 +149,11 @@ class EEGEmotionExperiment:
                 return
         cap.release()
 
-    def _show_message(self, message, duration, *,
-                      assessing=False, font_scale=2, font_thickness=3, screen_size_x=1920, screen_size_y=1080):
+    def _show_message(
+            self, message, duration, *,
+            font_scale=2, font_thickness=3, screen_size_x=1920, screen_size_y=1080,
+            scoring=False, segment_path=None,
+    ):
         text_size = cv2.getTextSize(message, cv2.FONT_HERSHEY_SIMPLEX, font_scale, font_thickness)[0]
         text_x = (screen_size_x - text_size[0]) // 2
         text_y = (screen_size_y + text_size[1]) // 2
@@ -149,7 +165,7 @@ class EEGEmotionExperiment:
                 img, message, (text_x, text_y),
                 cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 0, 0), font_thickness, cv2.LINE_AA
             )
-            cv2.imshow(self.WINDOW_NAME, img)
+            cv2.imshow(self.EXPERIMENT_WINDOW_NAME, img)
             key = cv2.waitKey(1) & 0xFF
             if key == PAUSE_KEY:
                 _pause_experiment()
@@ -158,17 +174,16 @@ class EEGEmotionExperiment:
                 sys.exit()
             elif key == SKIP_KEY:
                 return
-            elif assessing and key != 255:
-                if key in self.assessing_dict:
-                    score = self.assessing_dict[key]
-                    # TODO:
-                    #  Save this score for this video in a dictionary in the class,
-                    #  which would be saved continuously on disk
+            elif scoring and key != 255:
+                if key in self.scoring_dict:
+                    # Save this score for this video in a dictionary
+                    self.scores[segment_path] = self.scoring_dict[key]
+                    self._save_scores()
                     return
 
     def run_experiment(self):
-        cv2.namedWindow(self.WINDOW_NAME, cv2.WND_PROP_FULLSCREEN)
-        cv2.setWindowProperty(self.WINDOW_NAME, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+        cv2.namedWindow(self.EXPERIMENT_WINDOW_NAME, cv2.WND_PROP_FULLSCREEN)
+        cv2.setWindowProperty(self.EXPERIMENT_WINDOW_NAME, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
 
         # Get the list of segmented videos
         segment_files = {
@@ -191,7 +206,7 @@ class EEGEmotionExperiment:
                 order.append(segment_files[emotion].pop(0))
 
         # Define the experiment protocol
-        protocol = [("Hint of start", 5), ("Movie clip", None), ("Self-assessment", 45), ("Rest", 15)]
+        protocol = [("Hint of start", 5), ("Movie clip", None), ("Self-scoring", 45), ("Rest", 15)]
 
         # Give 1 minute to prepare for the start of the whole experiment
         self._show_message("Prepare for experiment", 60)
@@ -203,8 +218,11 @@ class EEGEmotionExperiment:
                     self._show_message("Hint of start", duration)
                 elif step == "Movie clip":
                     self._play_video(segment_path)
-                elif step == "Self-assessment":
-                    self._show_message("Please assess your emotions", duration, assessing=True)
+                elif step == "Self-scoring":
+                    self._show_message(
+                        "Please score your emotions", duration,
+                        scoring=True, segment_path=segment_path,
+                    )
                 elif step == "Rest":
                     self._show_message("Rest", duration)
 
