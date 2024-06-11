@@ -34,6 +34,11 @@ class EEGEmotionExperiment:
         "neutral": 0,
         "negative": -1,
     }
+    EMOTION_COLORS = {
+        "positive": (120, 200, 80),  # Emerald Green in BGR
+        "neutral": (128, 128, 128),  # Gray
+        "negative": (43, 43, 210),  # Cadmium Red in BGR
+    }
     scoring_dict = {
         ord(str(i)): i
         for i in range(6)  # Scores from 0 to 5 inclusive
@@ -150,21 +155,42 @@ class EEGEmotionExperiment:
         cap.release()
 
     def _show_message(
-            self, message, duration, *,
+            self, message, duration, *, emotion=None,
             font_scale=2, font_thickness=3, screen_size_x=1920, screen_size_y=1080,
             scoring=False, segment_path=None,
     ):
-        text_size = cv2.getTextSize(message, cv2.FONT_HERSHEY_SIMPLEX, font_scale, font_thickness)[0]
+        text_size = cv2.getTextSize(
+            message, cv2.FONT_HERSHEY_SIMPLEX, font_scale, font_thickness
+        )[0]
         text_x = (screen_size_x - text_size[0]) // 2
         text_y = (screen_size_y + text_size[1]) // 2
+
+        # Place emotion msg below the main message
+        emotion_font_scale = font_scale * 2.75
+        emotion_message = emotion.capitalize() if emotion in self.VERDICTS_DICT else ""
+        emotion_color = self.EMOTION_COLORS.get(emotion, (0, 0, 0))
+        emotion_text_size = cv2.getTextSize(
+            emotion_message, cv2.FONT_HERSHEY_SIMPLEX, emotion_font_scale, font_thickness
+        )[0]
+        emotion_text_x = (screen_size_x - emotion_text_size[0]) // 2
+        emotion_text_y = text_y + text_size[1] + emotion_text_size[1]
+
+        if emotion_message:
+            text_y -= emotion_text_size[1] // 2
+            emotion_text_y -= emotion_text_size[1] // 2
 
         start_time = time.time()
         while time.time() - start_time < duration:
             img = 255 * np.ones((screen_size_y, screen_size_x, 3), dtype=np.uint8)
             cv2.putText(
                 img, message, (text_x, text_y),
-                cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 0, 0), font_thickness, cv2.LINE_AA
+                cv2.FONT_HERSHEY_SIMPLEX, font_scale, (15, 15, 15), font_thickness, cv2.LINE_AA
             )
+            if emotion_message:
+                cv2.putText(
+                    img, emotion_message, (emotion_text_x, emotion_text_y),
+                    cv2.FONT_HERSHEY_SIMPLEX, emotion_font_scale, emotion_color, font_thickness, cv2.LINE_AA
+                )
             cv2.imshow(self.EXPERIMENT_WINDOW_NAME, img)
             key = cv2.waitKey(1) & 0xFF
             if key == PAUSE_KEY:
@@ -177,7 +203,7 @@ class EEGEmotionExperiment:
             elif scoring and key != 255:
                 if key in self.scoring_dict:
                     # Save this score for this video in a dictionary
-                    self.scores[segment_path] = self.scoring_dict[key]
+                    self.scores[segment_path.replace("\\", "/")] = self.scoring_dict[key]
                     self._save_scores()
                     return
 
@@ -203,7 +229,7 @@ class EEGEmotionExperiment:
         order = []
         while all(segment_files.values()):
             for emotion in emotions:
-                order.append(segment_files[emotion].pop(0))
+                order.append((emotion, segment_files[emotion].pop(0)))
 
         # Define the experiment protocol
         protocol = [("Hint of start", 5), ("Movie clip", None), ("Self-scoring", 45), ("Rest", 15)]
@@ -212,10 +238,13 @@ class EEGEmotionExperiment:
         self._show_message("Prepare for experiment", 60)
 
         # Main experiment loop
-        for segment_path in order:
+        for emotion, segment_path in order:
             for step, duration in protocol:
                 if step == "Hint of start":
-                    self._show_message("Hint of start", duration)
+                    self._show_message(
+                        "Starting with emotion:", duration,
+                        emotion=emotion
+                    )
                 elif step == "Movie clip":
                     self._play_video(segment_path)
                 elif step == "Self-scoring":
