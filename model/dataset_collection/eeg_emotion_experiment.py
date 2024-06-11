@@ -6,6 +6,7 @@ import time
 import cv2
 import moviepy.editor as mp
 import numpy as np
+import screeninfo
 import ujson
 
 PAUSE_KEY = ord(" ")
@@ -50,6 +51,7 @@ class EEGEmotionExperiment:
             segment_eps=0.9,  # Accept segments of length at least `segment_duration * segment_eps`
             overwrite_concatenated_videos=False,
             ignore_existing_files=False,
+            msg_font_scale=2, msg_font_thickness=4,
     ):
         if not (0 <= segment_eps <= 1):
             raise Exception("segment_eps must be between 0 and 1")
@@ -58,6 +60,8 @@ class EEGEmotionExperiment:
         self.segment_eps = segment_eps
         self.overwrite_concatenated_videos = overwrite_concatenated_videos
         self.ignore_existing_files = ignore_existing_files
+        self.msg_font_scale = msg_font_scale
+        self.msg_font_thickness = msg_font_thickness
 
         self.scores = dict()
 
@@ -78,12 +82,16 @@ class EEGEmotionExperiment:
         for path in self.segmented_dirs.values():
             os.makedirs(path, exist_ok=True)
 
+        screen = screeninfo.get_monitors()[0]
+        self.screen_size_x, self.screen_size_y = screen.width, screen.height
+
     # 1
     @staticmethod
     def _concatenate_videos(video_files, output_path):
         clips = [mp.VideoFileClip(file) for file in video_files]
         final_clip = mp.concatenate_videoclips(clips)
         final_clip.write_videofile(output_path, codec="libx264")
+        return
 
     def prepare_videos(self):
         for emotion, dir_path in self.video_dirs.items():
@@ -101,6 +109,7 @@ class EEGEmotionExperiment:
                 if file_name.endswith(".mp4") and "_concatenated" not in file_name
             ]
             self._concatenate_videos(video_files, concatenated_path)
+        return
 
     # 2
     def create_segments(self):
@@ -128,14 +137,16 @@ class EEGEmotionExperiment:
                 segment_file_name = f"segment_{i // self.desired_segment_duration}.mp4"
                 segment_output_file_path = os.path.join(segment_base_path, segment_file_name)
                 segment.write_videofile(segment_output_file_path, codec="libx264")
+        return
 
     # 3
     def _save_scores(self):
-        with open(self.SCORES_FILE_PATH, "w") as f:
+        with open(self.SCORES_FILE_PATH, "w", encoding="utf-8") as f:
             ujson.dump(
                 self.scores, f,
                 escape_forward_slashes=False, indent=2, sort_keys=True, ensure_ascii=False
             )
+        return
 
     def _play_video(self, video_path):
         cap = cv2.VideoCapture(video_path)
@@ -153,45 +164,49 @@ class EEGEmotionExperiment:
             elif key == SKIP_KEY:  # TODO: Make more complex system to skip videos to not skip them by mistake
                 return
         cap.release()
+        return
 
-    def _show_message(
-            self, message, duration, *, emotion=None,
-            font_scale=2, font_thickness=3, screen_size_x=1920, screen_size_y=1080,
-            scoring=False, segment_path=None,
-    ):
+    def _show_message(self, message, duration, *, emotion=None, segment_path=None, emotion_msg_scale=2.75):
+        # Prepare the main message
         text_size = cv2.getTextSize(
-            message, cv2.FONT_HERSHEY_SIMPLEX, font_scale, font_thickness
+            message, cv2.FONT_HERSHEY_SIMPLEX, self.msg_font_scale, self.msg_font_thickness
         )[0]
-        text_x = (screen_size_x - text_size[0]) // 2
-        text_y = (screen_size_y + text_size[1]) // 2
+        text_x = (self.screen_size_x - text_size[0]) // 2
+        text_y = (self.screen_size_y + text_size[1]) // 2
 
+        # Prepare the emotion msg
         # Place emotion msg below the main message
-        emotion_font_scale = font_scale * 2.75
+        emotion_font_scale = self.msg_font_scale * emotion_msg_scale
+        emotion_font_thickness = int(self.msg_font_thickness * emotion_msg_scale)
         emotion_message = emotion.capitalize() if emotion in self.VERDICTS_DICT else ""
         emotion_color = self.EMOTION_COLORS.get(emotion, (0, 0, 0))
         emotion_text_size = cv2.getTextSize(
-            emotion_message, cv2.FONT_HERSHEY_SIMPLEX, emotion_font_scale, font_thickness
+            emotion_message, cv2.FONT_HERSHEY_SIMPLEX, emotion_font_scale, emotion_font_thickness
         )[0]
-        emotion_text_x = (screen_size_x - emotion_text_size[0]) // 2
+        emotion_text_x = (self.screen_size_x - emotion_text_size[0]) // 2
         emotion_text_y = text_y + text_size[1] + emotion_text_size[1]
 
+        # Center the messages
         if emotion_message:
             text_y -= emotion_text_size[1] // 2
             emotion_text_y -= emotion_text_size[1] // 2
 
         start_time = time.time()
         while time.time() - start_time < duration:
-            img = 255 * np.ones((screen_size_y, screen_size_x, 3), dtype=np.uint8)
+            # Show the messages
+            img = 255 * np.ones((self.screen_size_y, self.screen_size_x, 3), dtype=np.uint8)
             cv2.putText(
                 img, message, (text_x, text_y),
-                cv2.FONT_HERSHEY_SIMPLEX, font_scale, (15, 15, 15), font_thickness, cv2.LINE_AA
+                cv2.FONT_HERSHEY_SIMPLEX, self.msg_font_scale, (15, 15, 15), self.msg_font_thickness, cv2.LINE_AA
             )
             if emotion_message:
                 cv2.putText(
                     img, emotion_message, (emotion_text_x, emotion_text_y),
-                    cv2.FONT_HERSHEY_SIMPLEX, emotion_font_scale, emotion_color, font_thickness, cv2.LINE_AA
+                    cv2.FONT_HERSHEY_SIMPLEX, emotion_font_scale, emotion_color, emotion_font_thickness, cv2.LINE_AA
                 )
             cv2.imshow(self.EXPERIMENT_WINDOW_NAME, img)
+
+            # Listen for keys
             key = cv2.waitKey(1) & 0xFF
             if key == PAUSE_KEY:
                 _pause_experiment()
@@ -200,12 +215,18 @@ class EEGEmotionExperiment:
                 sys.exit()
             elif key == SKIP_KEY:
                 return
-            elif scoring and key != 255:
+            elif segment_path and key != 255:
                 if key in self.scoring_dict:
                     # Save this score for this video in a dictionary
                     self.scores[segment_path.replace("\\", "/")] = self.scoring_dict[key]
                     self._save_scores()
                     return
+
+        if segment_path:
+            # TODO: Make this into a message on screen to not close the experiment for this
+            raise Exception("We are scoring, but no score was provided")
+
+        return
 
     def run_experiment(self):
         cv2.namedWindow(self.EXPERIMENT_WINDOW_NAME, cv2.WND_PROP_FULLSCREEN)
@@ -250,7 +271,7 @@ class EEGEmotionExperiment:
                 elif step == "Self-scoring":
                     self._show_message(
                         "Please score your emotions", duration,
-                        scoring=True, segment_path=segment_path,
+                        segment_path=segment_path,
                     )
                 elif step == "Rest":
                     self._show_message("Rest", duration)
