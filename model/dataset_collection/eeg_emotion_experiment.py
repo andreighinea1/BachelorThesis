@@ -9,6 +9,9 @@ import numpy as np
 import screeninfo
 import ujson
 
+from dataset_collection.audio_player import AudioPlayer
+from dataset_collection.custom_video_capture import CustomVideoCapture
+
 PAUSE_KEY = ord(" ")
 QUIT_KEY = ord("q")
 SKIP_KEY = ord("s")  # Used to skip messages only
@@ -27,6 +30,9 @@ class EEGEmotionExperiment:
     }
     PAUSED_COLOR = (0, 0, 255)  # Red color in BGR
     PAUSED_TEXT = "PAUSED"
+
+    VIDEO_FORMAT = "mp4"
+    AUDIO_FORMAT = "wav"
 
     VERDICTS_DICT = {
         "positive": 1,
@@ -65,7 +71,7 @@ class EEGEmotionExperiment:
             if os.path.exists(emotion_path) and os.listdir(emotion_path)
         }
         self.concatenated_videos = {
-            emotion: os.path.join(emotion_path, f"_concatenated.mp4")
+            emotion: os.path.join(emotion_path, f"_concatenated.{self.VIDEO_FORMAT}")
             for emotion, emotion_path in self.video_dirs.items()
         }
         self.segmented_dirs = {
@@ -115,7 +121,7 @@ class EEGEmotionExperiment:
             video_files = [
                 os.path.join(dir_path, file_name)
                 for file_name in os.listdir(dir_path)
-                if file_name.endswith(".mp4") and "_concatenated" not in file_name
+                if file_name.endswith(f".{self.VIDEO_FORMAT}") and "_concatenated" not in file_name
             ]
             self._concatenate_videos(video_files, concatenated_path)
         return
@@ -133,6 +139,9 @@ class EEGEmotionExperiment:
                 raise Exception(f"To proceed, remove existing segments from {segment_base_path}")
 
             video = mp.VideoFileClip(concatenated_path)
+            audio = video.audio
+            video = video.without_audio()
+
             duration = video.duration
             for i in range(0, int(duration), self.desired_segment_duration):
                 segment_end = min(i + self.desired_segment_duration, duration)
@@ -142,10 +151,17 @@ class EEGEmotionExperiment:
                 if actual_segment_duration < self.desired_segment_duration * self.segment_eps:
                     break
 
+                segment_name = f"segment_{i // self.desired_segment_duration}"
+
+                # Save the video without audio
                 segment = video.subclip(i, segment_end)
-                segment_file_name = f"segment_{i // self.desired_segment_duration}.mp4"
-                segment_output_file_path = os.path.join(segment_base_path, segment_file_name)
+                segment_output_file_path = os.path.join(segment_base_path, f"{segment_name}.{self.VIDEO_FORMAT}")
                 segment.write_videofile(segment_output_file_path, codec="libx264")
+
+                # Save the corresponding audio segment
+                audio_segment = audio.subclip(i, segment_end)
+                audio_segment_output_file_path = os.path.join(segment_base_path, f"{segment_name}.{self.AUDIO_FORMAT}")
+                audio_segment.write_audiofile(audio_segment_output_file_path)
         return
 
     # 3
@@ -157,30 +173,46 @@ class EEGEmotionExperiment:
             )
         return
 
-    def _play_video(self, video_path):
-        cap = cv2.VideoCapture(video_path)
-        paused = False
-        while cap.isOpened():
-            ret, frame = cap.read()
-            if not ret:
-                break
+    def _play_video(self, video_path, audio_path):
+        with CustomVideoCapture(video_path) as cap, AudioPlayer(audio_path) as audio_player:
+            paused = False
+            start_time = time.time()
+            pause_start_time = None
 
-            if paused:
-                self._pause_experiment(img=frame)
-                paused = False
-            else:
-                cv2.imshow(self.EXPERIMENT_WINDOW_NAME, frame)
+            while cap.isOpened():
+                ret, frame = cap.read()
+                if not ret:
+                    break
 
-                # Listen for keys
-                key = cv2.waitKey(25) & 0xFF
-                if key == PAUSE_KEY:
-                    paused = True
-                elif key == QUIT_KEY:
-                    cv2.destroyAllWindows()
-                    sys.exit()
-                elif key == SKIP_KEY:  # TODO: Make more complex system to skip videos to not skip them by mistake
-                    return
-        cap.release()
+                if paused:
+                    if not pause_start_time:
+                        pause_start_time = time.time()
+                    audio_player.pause()
+                    self._pause_experiment(img=frame)
+                    paused = False
+                    start_time += time.time() - pause_start_time  # Adjust `start_time` to account for paused duration
+                    pause_start_time = None
+
+                    # # Resynchronize audio to the current position of the video - Maybe not needed?
+                    # current_video_time = cap.get(cv2.CAP_PROP_POS_MSEC) / 1000.0
+                    # audio_player.seek(current_video_time)
+                else:
+                    cv2.imshow(self.EXPERIMENT_WINDOW_NAME, frame)
+                    audio_player.resume()
+
+                    # Find the amount needed to sleep in order to synchronize the playing video to the current time
+                    elapsed = int((time.time() - start_time) * 1000)  # ms
+                    play_time = int(cap.get(cv2.CAP_PROP_POS_MSEC))
+                    sleep = max(1, play_time - elapsed)
+
+                    key = cv2.waitKey(sleep) & 0xFF
+                    if key == PAUSE_KEY:
+                        paused = True
+                    elif key == QUIT_KEY:
+                        cv2.destroyAllWindows()
+                        sys.exit()
+                    elif key == SKIP_KEY:  # TODO: Make more complex system to skip videos to not skip them by mistake
+                        break
         return
 
     def _show_message(self, message, duration, *, emotion=None, segment_path=None, emotion_msg_scale=2.75):
@@ -265,7 +297,7 @@ class EEGEmotionExperiment:
             emotion: sorted([
                 os.path.join(segmented_dir, file)
                 for file in os.listdir(segmented_dir)
-                if file.endswith(".mp4")
+                if file.endswith(f".{self.VIDEO_FORMAT}")
             ])
             for emotion, segmented_dir in self.segmented_dirs.items()
         }
@@ -287,22 +319,30 @@ class EEGEmotionExperiment:
         self._show_message("Prepare for experiment", 60)
 
         # Main experiment loop
-        for emotion, segment_path in order:
+        for emotion, segment_video_path in order:
             for step, duration in protocol:
                 if step == "Hint of start":
                     self._show_message(
                         "Starting with emotion:", duration,
-                        emotion=emotion
+                        emotion=emotion,
                     )
                 elif step == "Movie clip":
-                    self._play_video(segment_path)
+                    self._play_video(
+                        video_path=segment_video_path,
+                        audio_path=segment_video_path.replace(
+                            f".{self.VIDEO_FORMAT}",
+                            f".{self.AUDIO_FORMAT}"
+                        ),
+                    )
                 elif step == "Self-scoring":
                     self._show_message(
                         "Please score your emotions", duration,
-                        segment_path=segment_path,
+                        segment_path=segment_video_path,  # TODO: Don't use `segment_video_path` directly here
                     )
                 elif step == "Rest":
-                    self._show_message("Rest", duration)
+                    self._show_message(
+                        "Rest", duration,
+                    )
 
         cv2.destroyAllWindows()
         return
