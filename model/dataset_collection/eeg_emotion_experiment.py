@@ -179,10 +179,25 @@ class EEGEmotionExperiment:
             start_time = time.time()
             pause_start_time = None
 
+            def re_sync_audio():
+                current_video_time = cap.get(cv2.CAP_PROP_POS_MSEC) / 1000.0
+                audio_player.seek(current_video_time)
+
+            # printed_desync_time = 0
             while cap.isOpened():
                 ret, frame = cap.read()
                 if not ret:
                     break
+
+                video_position = cap.get(cv2.CAP_PROP_POS_MSEC) / 1000.0
+                audio_position = audio_player.get_position()
+                desync = abs(audio_position - video_position)
+                # if time.time() - printed_desync_time > 1:
+                #     print(f"desync: {desync:.4f}")
+                #     printed_desync_time = time.time()
+                if desync > 0.25:  # More than 250ms desync
+                    print(f"Video desynchronized with audio by {desync:.4f}! Resynchronizing...", file=sys.stderr)
+                    re_sync_audio()
 
                 if paused:
                     if not pause_start_time:
@@ -193,9 +208,8 @@ class EEGEmotionExperiment:
                     start_time += time.time() - pause_start_time  # Adjust `start_time` to account for paused duration
                     pause_start_time = None
 
-                    # # Resynchronize audio to the current position of the video - Maybe not needed?
-                    # current_video_time = cap.get(cv2.CAP_PROP_POS_MSEC) / 1000.0
-                    # audio_player.seek(current_video_time)
+                    # Resynchronize audio to the current position of the video
+                    re_sync_audio()
                 else:
                     cv2.imshow(self.EXPERIMENT_WINDOW_NAME, frame)
                     audio_player.resume()
@@ -289,9 +303,6 @@ class EEGEmotionExperiment:
         return
 
     def run_experiment(self):
-        cv2.namedWindow(self.EXPERIMENT_WINDOW_NAME, cv2.WND_PROP_FULLSCREEN)
-        cv2.setWindowProperty(self.EXPERIMENT_WINDOW_NAME, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
-
         # Get the list of segmented videos
         segment_files = {
             emotion: sorted([
@@ -314,6 +325,10 @@ class EEGEmotionExperiment:
 
         # Define the experiment protocol
         protocol = [("Hint of start", 5), ("Movie clip", None), ("Self-scoring", 45), ("Rest", 15)]
+
+        # --- Start of opencv stuff ---
+        cv2.namedWindow(self.EXPERIMENT_WINDOW_NAME, cv2.WND_PROP_FULLSCREEN)
+        cv2.setWindowProperty(self.EXPERIMENT_WINDOW_NAME, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
 
         # Give 1 minute to prepare for the start of the whole experiment
         self._show_message("Prepare for experiment", 60)

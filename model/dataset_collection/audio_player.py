@@ -8,7 +8,7 @@ import pyaudio
 class AudioPlayer:
     """ A class for playing audio files. """
 
-    def __init__(self, audio_file_path):
+    def __init__(self, audio_file_path, *, auto_start=False):
         """
         Initializes the AudioPlayer with the given audio file.
 
@@ -18,8 +18,6 @@ class AudioPlayer:
         Raises:
             Exception: If the audio file cannot be opened.
         """
-        self._paused = False
-        self._stop = False
         self._lock = threading.Lock()
 
         try:
@@ -35,8 +33,12 @@ class AudioPlayer:
             output=True,
             stream_callback=self._stream_callback,
         )
+        self._running = True
 
-    def _stream_callback(self, in_data, frame_count, time_info, status):
+        if not auto_start:
+            self.pause()
+
+    def _stream_callback(self, in_data, frame_count, time_info, status_flags):
         """
         Callback function for audio stream.
 
@@ -44,15 +46,12 @@ class AudioPlayer:
             in_data (bytes | None): Input data.
             frame_count (int): Number of frames.
             time_info (Mapping[str, float]): Time information.
-            status (int): Status of the stream.
+            status_flags (int): Status flags of the stream.
 
         Returns:
             tuple[bytes, int]: Audio data and continue flag.
         """
         with self._lock:
-            if self._paused or self._stop:
-                return b"\x00" * frame_count * self._wf.getsampwidth(), pyaudio.paContinue
-
             data = self._wf.readframes(frame_count)
             if len(data) == 0:
                 return None, pyaudio.paComplete
@@ -63,25 +62,35 @@ class AudioPlayer:
         Closes the audio stream and releases resources.
         """
         with self._lock:
-            self._stop = True
-        self._stream.stop_stream()
-        self._stream.close()
-        self._p.terminate()
-        self._wf.close()
+            self._stream.stop_stream()
+            self._stream.close()
+            self._p.terminate()
+            self._wf.close()
+            self._running = False
 
     def pause(self):
         """
         Pauses the audio playback.
         """
         with self._lock:
-            self._paused = True
+            self._stream.stop_stream()
+            self._running = False
 
     def resume(self):
         """
         Resumes the audio playback.
         """
         with self._lock:
-            self._paused = False
+            self._stream.start_stream()
+            self._running = True
+
+    def get_position(self):
+        """ Get the current position in seconds in the audio playback. """
+        return self._wf.tell() / self._wf.getframerate()
+
+    def get_duration(self):
+        """ Get the duration in seconds of the audio. """
+        return self._wf.getnframes() / self._wf.getframerate()
 
     def get_status(self):
         """
@@ -92,9 +101,9 @@ class AudioPlayer:
         """
         with self._lock:
             return {
-                "paused": self._paused,
-                "position": self._wf.tell() / self._wf.getframerate(),
-                "duration": self._wf.getnframes() / self._wf.getframerate()
+                "running": self._running,
+                "position": self.get_position(),
+                "duration": self.get_duration(),
             }
 
     def seek(self, position):
