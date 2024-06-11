@@ -159,21 +159,27 @@ class EEGEmotionExperiment:
 
     def _play_video(self, video_path):
         cap = cv2.VideoCapture(video_path)
+        paused = False
         while cap.isOpened():
             ret, frame = cap.read()
             if not ret:
                 break
-            cv2.imshow(self.EXPERIMENT_WINDOW_NAME, frame)
 
-            # Listen for keys
-            key = cv2.waitKey(25) & 0xFF
-            if key == PAUSE_KEY:
+            if paused:
                 self._pause_experiment(img=frame)
-            elif key == QUIT_KEY:
-                cv2.destroyAllWindows()
-                sys.exit()
-            elif key == SKIP_KEY:  # TODO: Make more complex system to skip videos to not skip them by mistake
-                return
+                paused = False
+            else:
+                cv2.imshow(self.EXPERIMENT_WINDOW_NAME, frame)
+
+                # Listen for keys
+                key = cv2.waitKey(25) & 0xFF
+                if key == PAUSE_KEY:
+                    paused = True
+                elif key == QUIT_KEY:
+                    cv2.destroyAllWindows()
+                    sys.exit()
+                elif key == SKIP_KEY:  # TODO: Make more complex system to skip videos to not skip them by mistake
+                    return
         cap.release()
         return
 
