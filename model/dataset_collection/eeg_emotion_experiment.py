@@ -335,6 +335,9 @@ class EEGEmotionExperiment:
 
         # Main experiment loop
         for emotion, segment_video_path in order:
+            # TODO:
+            #  Check overall time in experiment until now.
+            #  If > 50 minutes, pause the experiment automatically and wait for manual start again.
             for step, duration in protocol:
                 if step == "Hint of start":
                     self._show_message(
@@ -342,6 +345,7 @@ class EEGEmotionExperiment:
                         emotion=emotion,
                     )
                 elif step == "Movie clip":
+                    start_video_time = time.time()
                     self._play_video(
                         video_path=segment_video_path,
                         audio_path=segment_video_path.replace(
@@ -349,6 +353,11 @@ class EEGEmotionExperiment:
                             f".{self.AUDIO_FORMAT}"
                         ),
                     )
+                    time_taken = time.time() - start_video_time
+                    if time_taken < self.desired_segment_duration:
+                        print(f"Probably skipped the video. Video time taken: {time_taken:.4f}", file=sys.stderr)
+                    else:
+                        print(f"Video time taken: {time_taken:.4f}")
                 elif step == "Self-scoring":
                     self._show_message(
                         "Please score your emotions", duration,
