@@ -136,11 +136,19 @@ class EEGEmotionExperiment:
                 return
         cap.release()
 
-    def _show_message(self, message, duration, *, assessing=False):
+    def _show_message(self, message, duration, *,
+                      assessing=False, font_scale=2, font_thickness=3, screen_size_x=1920, screen_size_y=1080):
+        text_size = cv2.getTextSize(message, cv2.FONT_HERSHEY_SIMPLEX, font_scale, font_thickness)[0]
+        text_x = (screen_size_x - text_size[0]) // 2
+        text_y = (screen_size_y + text_size[1]) // 2
+
         start_time = time.time()
         while time.time() - start_time < duration:
-            img = 255 * np.ones((500, 800, 3), dtype=np.uint8)
-            cv2.putText(img, message, (50, 250), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 0), 3, cv2.LINE_AA)
+            img = 255 * np.ones((screen_size_y, screen_size_x, 3), dtype=np.uint8)
+            cv2.putText(
+                img, message, (text_x, text_y),
+                cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 0, 0), font_thickness, cv2.LINE_AA
+            )
             cv2.imshow(self.WINDOW_NAME, img)
             key = cv2.waitKey(1) & 0xFF
             if key == PAUSE_KEY:
