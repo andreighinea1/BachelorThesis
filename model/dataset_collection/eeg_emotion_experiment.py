@@ -14,31 +14,24 @@ QUIT_KEY = ord("q")
 SKIP_KEY = ord("s")  # Used to skip messages only
 
 
-def _pause_experiment():
-    while True:
-        key = cv2.waitKey(1) & 0xFF
-        if key == PAUSE_KEY:
-            return
-        elif key == QUIT_KEY:
-            cv2.destroyAllWindows()
-            sys.exit()
-
-
 class EEGEmotionExperiment:
     EXPERIMENT_WINDOW_NAME = "EEG Emotion Recognition Experiment"
     BASE_PATH = "./dataset_collection"
     VIDEOS_DIR_PATH = f"{BASE_PATH}/videos"
     SCORES_FILE_PATH = f"{BASE_PATH}/scores.json"
 
-    VERDICTS_DICT = {
-        "positive": 1,
-        "neutral": 0,
-        "negative": -1,
-    }
     EMOTION_COLORS = {
         "positive": (120, 200, 80),  # Emerald Green in BGR
         "neutral": (128, 128, 128),  # Gray
         "negative": (43, 43, 210),  # Cadmium Red in BGR
+    }
+    PAUSED_COLOR = (0, 0, 255)  # Red color in BGR
+    PAUSED_TEXT = "PAUSED"
+
+    VERDICTS_DICT = {
+        "positive": 1,
+        "neutral": 0,
+        "negative": -1,
     }
     scoring_dict = {
         ord(str(i)): i
@@ -84,6 +77,22 @@ class EEGEmotionExperiment:
 
         screen = screeninfo.get_monitors()[0]
         self.screen_size_x, self.screen_size_y = screen.width, screen.height
+
+    def _pause_experiment(self, img):
+        cv2.putText(
+            img, self.PAUSED_TEXT, (self.screen_size_x - 200, self.screen_size_y - 30),
+            cv2.FONT_HERSHEY_SIMPLEX, 1, self.PAUSED_COLOR, 2, cv2.LINE_AA
+        )
+        cv2.imshow(self.EXPERIMENT_WINDOW_NAME, img)
+
+        # Listen for keys
+        while True:
+            key = cv2.waitKey(1) & 0xFF
+            if key == PAUSE_KEY:
+                return
+            elif key == QUIT_KEY:
+                cv2.destroyAllWindows()
+                sys.exit()
 
     # 1
     @staticmethod
@@ -155,9 +164,11 @@ class EEGEmotionExperiment:
             if not ret:
                 break
             cv2.imshow(self.EXPERIMENT_WINDOW_NAME, frame)
+
+            # Listen for keys
             key = cv2.waitKey(25) & 0xFF
             if key == PAUSE_KEY:
-                _pause_experiment()
+                self._pause_experiment(img=frame)
             elif key == QUIT_KEY:
                 cv2.destroyAllWindows()
                 sys.exit()
@@ -191,8 +202,18 @@ class EEGEmotionExperiment:
             text_y -= emotion_text_size[1] // 2
             emotion_text_y -= emotion_text_size[1] // 2
 
-        start_time = time.time()
-        while time.time() - start_time < duration:
+        elapsed_time = 0
+        last_paused = True
+        last_time = None
+        while elapsed_time < duration:
+            # Increase the `elapsed_time` like a delta-time only after the first loop. Discard time while paused.
+            current_time = time.time()
+            if last_paused:
+                last_paused = False
+            else:
+                elapsed_time += current_time - last_time
+            last_time = current_time
+
             # Show the messages
             img = 255 * np.ones((self.screen_size_y, self.screen_size_x, 3), dtype=np.uint8)
             cv2.putText(
@@ -209,7 +230,8 @@ class EEGEmotionExperiment:
             # Listen for keys
             key = cv2.waitKey(1) & 0xFF
             if key == PAUSE_KEY:
-                _pause_experiment()
+                last_paused = True
+                self._pause_experiment(img=img)
             elif key == QUIT_KEY:
                 cv2.destroyAllWindows()
                 sys.exit()
