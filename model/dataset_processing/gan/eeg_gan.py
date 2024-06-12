@@ -9,16 +9,17 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
+from tqdm.auto import tqdm
 
 from dataset_processing.eeg_dataset import EEGGanDataset
 from dataset_processing.gan.discriminator import Discriminator
 from dataset_processing.gan.generator import Generator
 
 
-class EEGGAN:
+class EegGan:
     def __init__(
-            self,
-            dataframe, generator_initial_layers: List[int], discriminator_layers: List[int],
+            self, dataframe, generator_initial_layers: List[int], discriminator_layers: List[int], *,
+            device=None,
             # For DataLoader
             batch_size=10, num_workers=5, prefetch_factor=2,
             # For model
@@ -26,7 +27,8 @@ class EEGGAN:
             learning_rate=1e-4, scheduler_patience=10,
             # For logging and saving
             model_save_dir: Optional[str] = "model_params/gan",
-            log_dir: Optional[str] = "runs/gan"
+            log_dir: Optional[str] = "runs/gan",
+            to_train=True,
     ):
         self.dataframe = dataframe
         self.latent_dim = latent_dim
@@ -35,14 +37,19 @@ class EEGGAN:
         self.num_workers = num_workers
         self.prefetch_factor = prefetch_factor
         self.learning_rate = learning_rate
+        self.to_train = to_train
+        self._trained = False
+
+        # Determine the device to be used
+        self.device = device if device else torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # Determine the shape of the EEG data
         self.eeg_dim = dataframe.iloc[0]["EEG"].shape[0]
         generator_initial_layers.append(self.eeg_dim)
 
         # Initialize the GAN components with dynamic layers
-        self.generator = Generator(self.latent_dim, generator_initial_layers).to("cuda")
-        self.discriminator = Discriminator(self.eeg_dim, discriminator_layers).to("cuda")
+        self.generator = Generator(self.latent_dim, generator_initial_layers).to(self.device)
+        self.discriminator = Discriminator(self.eeg_dim, discriminator_layers).to(self.device)
 
         # Loss function and optimizers
         self.criterion = nn.BCELoss()
@@ -59,6 +66,11 @@ class EEGGAN:
             factor=0.1, patience=scheduler_patience
         )
 
+        # region Init return values
+        self.overall_elapsed_time = None
+        self.overall_formatted_time = None
+        # endregion
+
         # Logging and saving
         self.model_save_dir = model_save_dir
         if not os.path.exists(self.model_save_dir):
@@ -66,9 +78,8 @@ class EEGGAN:
         self.model_save_path = os.path.join(self.model_save_dir, "gan_model")
 
         self.log_dir = log_dir
-        self.writer = SummaryWriter(log_dir=self.log_dir) if self.log_dir is not None else None
 
-    def get_data_loader(self, shuffle=True):
+    def _get_data_loader(self, shuffle=True):
         return DataLoader(
             EEGGanDataset(self.dataframe),
             batch_size=self.batch_size,
@@ -79,84 +90,114 @@ class EEGGAN:
             prefetch_factor=self.prefetch_factor,
         )
 
-    def train(self):
-        dataloader = self.get_data_loader(shuffle=True)
+    def train(self, update_after_every_epoch=True, force_train=False):
+        if not self.to_train:
+            raise Exception("to_train must be True to train model")
+        if self._trained and not force_train:
+            raise Exception("Trying to train an already trained model!")
+
+        dataloader = self._get_data_loader(shuffle=True)
+        writer = SummaryWriter(log_dir=self.log_dir) if self.log_dir is not None else None
+        last_save = 0
         overall_start_time = time.time()
 
-        for epoch in range(1, self.epochs + 1):
-            epoch_start_time = time.time()
-            epoch_g_loss = 0.0
-            epoch_d_loss = 0.0
-            batch_count = len(dataloader)
+        with tqdm(total=self.epochs, desc="Training Progress", leave=False, unit="epoch") as overall_pbar:
+            for epoch in range(1, self.epochs + 1):
+                start_time = time.time()
+                epoch_g_loss = 0.0
+                epoch_d_loss = 0.0
+                batch_count = len(dataloader)
 
-            for i, (real_eeg, _) in enumerate(dataloader):
-                real_eeg = real_eeg.float().to("cuda")
-                batch_size = real_eeg.size(0)
+                with tqdm(dataloader, desc=f"Epoch {epoch}", leave=False) as pbar:
+                    for i, (real_eeg, _) in enumerate(dataloader):
+                        # noinspection PyUnresolvedReferences
+                        real_eeg = real_eeg.float().to(self.device)
+                        batch_size = real_eeg.size(0)
 
-                # Generate labels
-                valid = torch.ones(batch_size, device="cuda")
-                fake = torch.zeros(batch_size, device="cuda")
+                        # Generate labels
+                        valid = torch.ones(batch_size, device=self.device)
+                        fake = torch.zeros(batch_size, device=self.device)
 
-                # Train Generator
-                self.optimizer_G.zero_grad()
-                z = torch.randn(batch_size, self.latent_dim, 1, device="cuda")
-                generated_eeg = self.generator(z)
-                g_loss = self.criterion(self.discriminator(generated_eeg), valid)
-                g_loss.backward()
-                self.optimizer_G.step()
+                        # Train Generator
+                        self.optimizer_G.zero_grad()
+                        z = torch.randn(batch_size, self.latent_dim, 1, device=self.device)
+                        generated_eeg = self.generator(z)
+                        g_loss = self.criterion(self.discriminator(generated_eeg), valid)
+                        g_loss.backward()
+                        self.optimizer_G.step()
 
-                # Train Discriminator
-                self.optimizer_D.zero_grad()
-                real_loss = self.criterion(self.discriminator(real_eeg), valid)
-                fake_loss = self.criterion(self.discriminator(generated_eeg.detach()), fake)
-                d_loss = (real_loss + fake_loss) / 2
-                d_loss.backward()
-                self.optimizer_D.step()
+                        # Train Discriminator
+                        self.optimizer_D.zero_grad()
+                        real_loss = self.criterion(self.discriminator(real_eeg), valid)
+                        fake_loss = self.criterion(self.discriminator(generated_eeg.detach()), fake)
+                        d_loss = (real_loss + fake_loss) / 2
+                        d_loss.backward()
+                        self.optimizer_D.step()
 
-                epoch_g_loss += g_loss.item()
-                epoch_d_loss += d_loss.item()
+                        epoch_g_loss += g_loss.item()
+                        epoch_d_loss += d_loss.item()
 
-                if i % 50 == 0:
-                    print(f"[Epoch {epoch}/{self.epochs}] [Batch {i}/{len(dataloader)}] "
-                          f"[D loss: {d_loss.item()}] [G loss: {g_loss.item()}]")
+                        # Update tqdm progress bar with the current loss
+                        pbar.set_description_str(
+                            f"[Epoch {epoch}/{self.epochs}] [Batch {i}/{batch_count}]; "
+                            f"D Loss: {d_loss.item():.4f}, G Loss: {g_loss.item():.4f}"
+                        )
 
-            # Average losses for the epoch
-            avg_g_loss = epoch_g_loss / batch_count
-            avg_d_loss = epoch_d_loss / batch_count
+                # Average losses for the epoch
+                avg_g_loss = epoch_g_loss / batch_count
+                avg_d_loss = epoch_d_loss / batch_count
 
-            # Scheduler steps
-            self.scheduler_G.step(avg_g_loss)
-            self.scheduler_D.step(avg_d_loss)
+                # Scheduler steps
+                self.scheduler_G.step(avg_g_loss)
+                self.scheduler_D.step(avg_d_loss)
 
-            # Log metrics to TensorBoard
-            if self.writer is not None:
-                self.writer.add_scalar("Loss/Generator", avg_g_loss, epoch)
-                self.writer.add_scalar("Loss/Discriminator", avg_d_loss, epoch)
-                self.writer.add_scalar("Learning Rate/Generator", self.scheduler_G.optimizer.param_groups[0]['lr'],
-                                       epoch)
-                self.writer.add_scalar("Learning Rate/Discriminator", self.scheduler_D.optimizer.param_groups[0]['lr'],
-                                       epoch)
+                # Log metrics to TensorBoard
+                current_lr_G = self.scheduler_G.get_last_lr()[0]
+                current_lr_D = self.scheduler_D.get_last_lr()[0]
+                if writer is not None:
+                    writer.add_scalar("Loss/Generator", avg_g_loss, epoch)
+                    writer.add_scalar("Loss/Discriminator", avg_d_loss, epoch)
+                    writer.add_scalar("Learning Rate/Generator", current_lr_G, epoch)
+                    writer.add_scalar("Learning Rate/Discriminator", current_lr_D, epoch)
+                    writer.add_scalar("Time/epoch", elapsed_time, epoch)
 
-            # Save model at intervals
-            if epoch % 10 == 0 or epoch == self.epochs - 1:
-                self._save_model(epoch)
+                # Save model at intervals
+                if epoch % 10 == 0 or epoch == self.epochs:
+                    self._save_model(epoch)
+                    last_save = epoch
 
-            epoch_elapsed_time = time.time() - epoch_start_time
-            print(f"Epoch {epoch} completed in {str(timedelta(seconds=epoch_elapsed_time))[:-3]}. "
-                  f"Generator loss: {avg_g_loss:.4f}, Discriminator loss: {avg_d_loss:.4f}")
+                # Calculate the elapsed time for the epoch
+                elapsed_time = time.time() - start_time
 
-        overall_elapsed_time = time.time() - overall_start_time
-        overall_formatted_time = str(timedelta(seconds=overall_elapsed_time))[:-3]
-        print(f"Training completed in {overall_formatted_time}.")
-        self.writer.close() if self.writer is not None else None
+                if update_after_every_epoch:
+                    overall_pbar.set_description_str(
+                        f"last save: {last_save}, "
+                        f"D loss: {avg_d_loss:.4f}, G loss: {avg_g_loss:.4f}, "
+                        f"lr_D: {current_lr_D:.0e}, lr_G: {current_lr_G:.0e}"
+                    )
+                overall_pbar.update(1)
+
+            # Training completed
+            self.overall_elapsed_time = time.time() - overall_start_time
+            self.overall_formatted_time = str(timedelta(seconds=self.overall_elapsed_time))[:-3]
+            print(f"Training completed in {self.overall_formatted_time}.")
+
+        if writer is not None:
+            writer.close()
+
+        # Rename folder to keep the training "saved"
+        os.rename(self.model_save_dir, self.model_final_save_dir)  # TODO: Implement `model_final_save_dir`
+        self._trained = True
+
+        return
 
     def augment_data(self):
-        dataloader = self.get_data_loader(shuffle=False)
+        dataloader = self._get_data_loader(shuffle=False)
 
         new_records = []
         for real_eeg, verdict in dataloader:
             batch_size = real_eeg.size(0)
-            z = torch.randn(batch_size, self.latent_dim, 1, device="cuda")
+            z = torch.randn(batch_size, self.latent_dim, 1, device=self.device)
             generated_eeg = self.generator(z).cpu().detach().numpy()
 
             for i in range(batch_size):
@@ -200,4 +241,5 @@ class EEGGAN:
         self.optimizer_G.load_state_dict(optimizer_state_dict["optimizer_G"])
         self.optimizer_D.load_state_dict(optimizer_state_dict["optimizer_D"])
 
+        self._trained = True
         print(f"Loaded model from {model_path}")
