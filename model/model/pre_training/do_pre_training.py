@@ -5,9 +5,11 @@ from typing import Optional
 
 import torch
 from torch import optim
+from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from tqdm.auto import tqdm
 
+from dataset_processing.eeg_dataset import EEGDataset
 from model.common.encoders import TimeFrequencyEncoder, CrossSpaceProjector
 from model.common.loss import NTXentLoss
 
@@ -35,11 +37,13 @@ class PreTraining:
     MODEL_ADD = "pretrained_model"
 
     def __init__(
-            self, data_loader, sampling_frequency, *,
+            self, sampling_frequency, *, data_frame=None, data_loader=None,
             device=None,
             pretraining_model_save_dir: Optional[str] = "model_params/pretraining",
             log_dir: Optional[str] = "runs/pretraining",
             scheduler_patience=50, early_stopping_patience=100,
+            # For DataLoader
+            batch_size=256, num_workers=5, prefetch_factor=2,
             # Parameters from the paper
             epochs=1000, lr=3e-4, l2_norm_penalty=3e-4,
             alpha=0.2, beta=1.0, temperature=0.05,
@@ -47,6 +51,25 @@ class PreTraining:
             num_layers=2, nhead=8,
             overwrite_training=False, to_train=True,
     ):
+        # region Loading Dataset
+        if data_frame is not None:
+            print(f"Starting pre-training with {num_workers} workers loading the dataset")
+            self.data_loader = DataLoader(
+                EEGDataset(data_frame),
+                batch_size=batch_size,
+                shuffle=True,
+                pin_memory=True,
+                persistent_workers=True,
+
+                num_workers=num_workers,
+                prefetch_factor=prefetch_factor,
+            )
+        else:
+            if data_loader is None and to_train:
+                raise Exception("data_loader is None and to_train")
+            self.data_loader = data_loader  # Can be None when not training
+        # endregion
+
         # region Init return values
         self.overall_elapsed_time = None
         self.overall_formatted_time = None
@@ -54,7 +77,6 @@ class PreTraining:
         # endregion
 
         # region Init basic variables
-        self.data_loader = data_loader
         self.sampling_frequency = sampling_frequency
         self.device = device if device else torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.log_dir = log_dir

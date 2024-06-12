@@ -33,8 +33,11 @@
         - 4.2 SWOT Analysis
             -> Make it actually relevant
             -> Make a nice image with it in Canva
-
-
+    - EXTRAS:
+        -> Create image to show similarities between the GAN-generated data and the original
+            -> Like in `file:///C:/Users/aghinea/Downloads/electronics-12-02216-v4.pdf`
+            -> Automatic Emotion Recognition from EEG SignalsUsing a Combination of Type-2 Fuzzy and DeepConvolutional Networks
+        -> TODO: Add in bachelor thesis how `num_workers` was chosen with code from w_testing_values notebook
 
 - Innovations:
     - Advanced Data Augmentation Techniques:
