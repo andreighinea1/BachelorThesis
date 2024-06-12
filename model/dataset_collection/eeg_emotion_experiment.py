@@ -21,7 +21,7 @@ class EEGEmotionExperiment:
     EXPERIMENT_WINDOW_NAME = "EEG Emotion Recognition Experiment"
     BASE_PATH = "./dataset_collection"
     VIDEOS_DIR_PATH = f"{BASE_PATH}/videos"
-    SCORES_FILE_PATH = f"{BASE_PATH}/scores.json"
+    SCORES_FILE_PATH = f"{BASE_PATH}/output/scores.json"
 
     EMOTION_COLORS = {
         "positive": (120, 200, 80),  # Emerald Green in BGR
@@ -46,7 +46,7 @@ class EEGEmotionExperiment:
 
     def __init__(
             self,
-            desired_segment_duration=4 * 60,  # 4 minutes
+            desired_segment_duration=2 * 60,  # 2 minutes
             segment_eps=0.9,  # Accept segments of length at least `segment_duration * segment_eps`
             overwrite_concatenated_videos=False,
             ignore_existing_files=False,
@@ -80,6 +80,7 @@ class EEGEmotionExperiment:
         }
         for path in self.segmented_dirs.values():
             os.makedirs(path, exist_ok=True)
+        os.makedirs(os.path.dirname(self.SCORES_FILE_PATH), exist_ok=True)
 
         screen = screeninfo.get_monitors()[0]
         self.screen_size_x, self.screen_size_y = screen.width, screen.height
