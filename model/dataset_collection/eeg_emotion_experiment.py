@@ -17,6 +17,9 @@ QUIT_KEY = ord("q")
 SKIP_KEY = ord("s")  # Used to skip messages only
 
 
+# TODO: Show the chosen number when scoring, and don't close the scoring screen, keep it open for the whole duration.
+
+
 class EEGEmotionExperiment:
     EXPERIMENT_WINDOW_NAME = "EEG Emotion Recognition Experiment"
     BASE_PATH = "./dataset_collection"

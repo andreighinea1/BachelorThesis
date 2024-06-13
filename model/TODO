@@ -38,6 +38,7 @@
             -> Like in `file:///C:/Users/aghinea/Downloads/electronics-12-02216-v4.pdf`
             -> Automatic Emotion Recognition from EEG SignalsUsing a Combination of Type-2 Fuzzy and DeepConvolutional Networks
         -> TODO: Add in bachelor thesis how `num_workers` was chosen with code from w_testing_values notebook
+        -> Photos with the Headset and all components
 
 - Innovations:
     - Advanced Data Augmentation Techniques:
