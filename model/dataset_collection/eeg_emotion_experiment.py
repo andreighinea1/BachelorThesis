@@ -1,5 +1,6 @@
 import os
 import random
+import shutil
 import sys
 import time
 
@@ -8,6 +9,7 @@ import moviepy.editor as mp
 import numpy as np
 import screeninfo
 import ujson
+import subprocess
 
 from dataset_collection.audio_player import AudioPlayer
 from dataset_collection.custom_video_capture import CustomVideoCapture
@@ -110,8 +112,15 @@ class EEGEmotionExperiment:
     # 1
     @staticmethod
     def _concatenate_videos(video_files, output_path):
-        clips = [mp.VideoFileClip(file) for file in video_files]
-        final_clip = mp.concatenate_videoclips(clips)
+        # If only one video file, simply copy it to the output path
+        if len(video_files) == 1:
+            shutil.copyfile(video_files[0], output_path)
+            return
+
+        final_clip = mp.concatenate_videoclips(
+            clips=[mp.VideoFileClip(file) for file in video_files],
+            method="compose",  # "chain"
+        )
         final_clip.write_videofile(output_path, codec="libx264")
         return
 
