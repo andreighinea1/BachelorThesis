@@ -3,9 +3,8 @@
         - 1.2 Proposed Solution
             -> Update with GAN
             -> Update with better details about EPOC X
-            -> Don't use JCFA when I'm talking about the architecture of the model, use my model name "EmotionWave"
         - 1.3 Theoretical Background
-            - 1.3.2 K-order Chebyshev Graph Convolution
+            -> K-order Chebyshev Graph Convolution
                 -> Talk a bit about the code implementation
             -> NT-Xent (the normalized temperature-scaled cross entropy loss)
                 -> Talk a bit about the code implementation
@@ -30,13 +29,13 @@
     - Chapter 4 Project Planning and Management
         - 4.1 Gantt Chart -> Methodology
             -> Take a screenshot of a higher resolution, and change from 150% to lower
-        - 4.2 SWOT Analysis
-            -> REMOVE
+            -> Move to different chapter
     - EXTRAS:
         -> Create image to show similarities between the GAN-generated data and the original
             -> Like in `file:///C:/Users/aghinea/Downloads/electronics-12-02216-v4.pdf`
             -> Automatic Emotion Recognition from EEG SignalsUsing a Combination of Type-2 Fuzzy and DeepConvolutional Networks
-        -> TODO: Add in bachelor thesis how `num_workers` was chosen with code from w_testing_values notebook
+        -> TODO: Add in bachelor thesis how `num_workers` was chosen with code from w_testing_values notebook.
+        -> TODO: Don't use JCFA ANYWHERE!!! Use my model name "EmotionWave".
         -> Photos with the Headset and all components
         -> README.md
 

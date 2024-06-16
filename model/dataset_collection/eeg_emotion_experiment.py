@@ -163,7 +163,7 @@ class EEGEmotionExperiment:
                 if actual_segment_duration < self.desired_segment_duration * self.segment_eps:
                     break
 
-                segment_name = f"segment_{i // self.desired_segment_duration}"
+                segment_name = f"{emotion}_segment_{i // self.desired_segment_duration + 1}"
 
                 # Save the video segment using ffmpeg
                 video_segment_output_path = os.path.join(segment_base_path, f"{segment_name}.{self.VIDEO_FORMAT}")
@@ -177,7 +177,9 @@ class EEGEmotionExperiment:
                 ]
                 if self.save_audio_separately:
                     ffmpeg_command.insert(-1, "-an")  # Disable audio in the output video
-                subprocess.run(ffmpeg_command, check=True)
+                command_str = ' '.join(ffmpeg_command)
+                print(f"Running command: {command_str}")
+                subprocess.run(command_str, shell=True, check=True)
 
                 if self.save_audio_separately:
                     # Save the corresponding audio segment using ffmpeg
@@ -191,7 +193,10 @@ class EEGEmotionExperiment:
                         "-vn",  # No video
                         audio_segment_output_path
                     ]
-                    subprocess.run(ffmpeg_audio_command, check=True)
+                    audio_command_str = ' '.join(ffmpeg_audio_command)
+                    print(f"Running command: {audio_command_str}")
+                    subprocess.run(audio_command_str, shell=True, check=True)
+                print()
         return
 
     # 3
@@ -322,7 +327,7 @@ class EEGEmotionExperiment:
             elif segment_path and key != 255:
                 if key in self.scoring_dict:
                     # Save this score for this video in a dictionary
-                    self.scores[segment_path.replace("\\", "/")] = self.scoring_dict[key]
+                    self.scores[segment_path] = self.scoring_dict[key]
                     self._save_scores()
                     return
 
