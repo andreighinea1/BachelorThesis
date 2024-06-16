@@ -28,11 +28,10 @@
                 -> Graph Convolutional Network
                 -> Emotion Classification
     - Chapter 4 Project Planning and Management
-        - 4.2 Gantt Chart
+        - 4.1 Gantt Chart -> Methodology
             -> Take a screenshot of a higher resolution, and change from 150% to lower
         - 4.2 SWOT Analysis
-            -> Make it actually relevant
-            -> Make a nice image with it in Canva
+            -> REMOVE
     - EXTRAS:
         -> Create image to show similarities between the GAN-generated data and the original
             -> Like in `file:///C:/Users/aghinea/Downloads/electronics-12-02216-v4.pdf`

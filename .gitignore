@@ -1,5 +1,5 @@
 **/~$*.xlsx
 model/datasets/**
 model/model_params/**/*.pt
-model/dataset_collection/videos/**/_concatenated.mp4
-model/dataset_collection/videos/**/_segments/*
+model/dataset_collection/**/*.mp3
+model/dataset_collection/**/*.mp4

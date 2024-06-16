@@ -22,7 +22,8 @@ SKIP_KEY = ord("s")  # Used to skip messages only
 
 class EEGEmotionExperiment:
     EXPERIMENT_WINDOW_NAME = "EEG Emotion Recognition Experiment"
-    BASE_PATH = "./dataset_collection"
+    # BASE_PATH = "./dataset_collection"
+    BASE_PATH = "."
     VIDEOS_DIR_PATH = f"{BASE_PATH}/videos"
     SCORES_FILE_PATH = f"{BASE_PATH}/output/scores.json"
 
@@ -54,6 +55,7 @@ class EEGEmotionExperiment:
             overwrite_concatenated_videos=False,
             ignore_existing_files=False,
             msg_font_scale=2, msg_font_thickness=4,
+            save_audio_separately=True,
     ):
         if not (0 <= segment_eps <= 1):
             raise Exception("segment_eps must be between 0 and 1")
@@ -64,6 +66,7 @@ class EEGEmotionExperiment:
         self.ignore_existing_files = ignore_existing_files
         self.msg_font_scale = msg_font_scale
         self.msg_font_thickness = msg_font_thickness
+        self.save_audio_separately = save_audio_separately
 
         self.scores = dict()
 
@@ -142,9 +145,11 @@ class EEGEmotionExperiment:
                     continue
                 raise Exception(f"To proceed, remove existing segments from {segment_base_path}")
 
+            audio = None
             video = mp.VideoFileClip(concatenated_path)
-            audio = video.audio
-            video = video.without_audio()
+            if self.save_audio_separately:
+                audio = video.audio
+                video = video.without_audio()
 
             duration = video.duration
             for i in range(0, int(duration), self.desired_segment_duration):
@@ -157,15 +162,16 @@ class EEGEmotionExperiment:
 
                 segment_name = f"segment_{i // self.desired_segment_duration}"
 
-                # Save the video without audio
+                # Save the video
                 segment = video.subclip(i, segment_end)
                 segment_output_file_path = os.path.join(segment_base_path, f"{segment_name}.{self.VIDEO_FORMAT}")
                 segment.write_videofile(segment_output_file_path, codec="libx264")
 
-                # Save the corresponding audio segment
-                audio_segment = audio.subclip(i, segment_end)
-                audio_segment_output_file_path = os.path.join(segment_base_path, f"{segment_name}.{self.AUDIO_FORMAT}")
-                audio_segment.write_audiofile(audio_segment_output_file_path)
+                if self.save_audio_separately:
+                    # Save the corresponding audio segment
+                    audio_segment = audio.subclip(i, segment_end)
+                    audio_segment_output_file_path = os.path.join(segment_base_path, f"{segment_name}.{self.AUDIO_FORMAT}")
+                    audio_segment.write_audiofile(audio_segment_output_file_path)
         return
 
     # 3
