@@ -1,6 +1,7 @@
 import os
 import random
 import shutil
+import subprocess
 import sys
 import time
 
@@ -9,7 +10,6 @@ import moviepy.editor as mp
 import numpy as np
 import screeninfo
 import ujson
-import subprocess
 
 from dataset_collection.audio_player import AudioPlayer
 from dataset_collection.custom_video_capture import CustomVideoCapture
@@ -154,13 +154,7 @@ class EEGEmotionExperiment:
                     continue
                 raise Exception(f"To proceed, remove existing segments from {segment_base_path}")
 
-            audio = None
-            video = mp.VideoFileClip(concatenated_path)
-            if self.save_audio_separately:
-                audio = video.audio
-                video = video.without_audio()
-
-            duration = video.duration
+            duration = mp.VideoFileClip(concatenated_path).duration
             for i in range(0, int(duration), self.desired_segment_duration):
                 segment_end = min(i + self.desired_segment_duration, duration)
                 actual_segment_duration = segment_end - i
@@ -171,16 +165,33 @@ class EEGEmotionExperiment:
 
                 segment_name = f"segment_{i // self.desired_segment_duration}"
 
-                # Save the video
-                segment = video.subclip(i, segment_end)
-                segment_output_file_path = os.path.join(segment_base_path, f"{segment_name}.{self.VIDEO_FORMAT}")
-                segment.write_videofile(segment_output_file_path, codec="libx264")
+                # Save the video segment using ffmpeg
+                video_segment_output_path = os.path.join(segment_base_path, f"{segment_name}.{self.VIDEO_FORMAT}")
+                ffmpeg_command = [
+                    "ffmpeg",
+                    "-i", concatenated_path,
+                    "-ss", str(i),
+                    "-to", str(segment_end),
+                    "-c", "copy",
+                    video_segment_output_path
+                ]
+                if self.save_audio_separately:
+                    ffmpeg_command.insert(-1, "-an")  # Disable audio in the output video
+                subprocess.run(ffmpeg_command, check=True)
 
                 if self.save_audio_separately:
-                    # Save the corresponding audio segment
-                    audio_segment = audio.subclip(i, segment_end)
-                    audio_segment_output_file_path = os.path.join(segment_base_path, f"{segment_name}.{self.AUDIO_FORMAT}")
-                    audio_segment.write_audiofile(audio_segment_output_file_path)
+                    # Save the corresponding audio segment using ffmpeg
+                    audio_segment_output_path = os.path.join(segment_base_path, f"{segment_name}.{self.AUDIO_FORMAT}")
+                    ffmpeg_audio_command = [
+                        "ffmpeg",
+                        "-i", concatenated_path,
+                        "-ss", str(i),
+                        "-to", str(segment_end),
+                        "-c", "copy",
+                        "-vn",  # No video
+                        audio_segment_output_path
+                    ]
+                    subprocess.run(ffmpeg_audio_command, check=True)
         return
 
     # 3
