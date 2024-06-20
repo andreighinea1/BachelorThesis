@@ -67,8 +67,10 @@ class EpocDatasetLoader:
                     if not self._check_sample_rate(segment_df):
                         raise Exception(f"Sample rate accuracy check failed for phase `{phase_name}`")
 
-                    # Convert DataFrame to NumPy array
-                    eeg_data = segment_df[self.eeg_cols].to_numpy()
+                    # Convert DataFrame to NumPy array, transposed to (num_channels, num_samples)
+                    eeg_data = segment_df[self.eeg_cols].to_numpy().T
+                    if eeg_data.shape[0] != len(self.EEG_CHANNELS):
+                        raise Exception(f"Unexpected eeg_data shape: {eeg_data.shape}")
 
                     # Apply bandpass filter
                     eeg_data = self._apply_bandpass_filter(eeg_data)
@@ -76,7 +78,7 @@ class EpocDatasetLoader:
                     # Downsample the data
                     eeg_data = self._downsample_data(eeg_data)
 
-                    eeg_tensor = torch.tensor(eeg_data.T, dtype=torch.float32)
+                    eeg_tensor = torch.tensor(eeg_data, dtype=torch.float32)
 
                     # Get the verdict from the surveys
                     verdict = next((
@@ -122,16 +124,16 @@ class EpocDatasetLoader:
         Downsample the data to the target_fs using decimation.
 
         Args:
-            data (np.ndarray): Original EEG data. Numpy array of shape (num_samples, num_channels)
+            data (np.ndarray): Original EEG data. Numpy array of shape (num_channels, num_samples)
 
         Returns:
-            np.ndarray: Downsampled EEG data. Numpy array of shape (num_samples_downsampled, num_channels)
+            np.ndarray: Downsampled EEG data. Numpy array of shape (num_channels, num_samples_downsampled)
         """
         # Calculate the decimation factor
         decimation_factor = int(self.original_fs / self.target_fs)
 
         # Apply decimation to each channel
-        downsampled_data = decimate(data, decimation_factor, axis=0, zero_phase=True)
+        downsampled_data = decimate(data, decimation_factor, axis=1, zero_phase=True)
         return downsampled_data
 
     def _apply_bandpass_filter(self, data, low_cut=0.5, high_cut=75.0):
@@ -140,7 +142,7 @@ class EpocDatasetLoader:
         Filters frequencies between low_cut and high_cut Hz.
 
         Args:
-            data (np.ndarray): The input data to be filtered.
+            data (np.ndarray): The input data to be filtered. Shape should be (num_channels, num_samples)
             low_cut (float): The lower cutoff frequency in Hz.
             high_cut (float): The upper cutoff frequency in Hz.
 
@@ -158,11 +160,10 @@ class EpocDatasetLoader:
 
         # Design a Butterworth bandpass filter
         # noinspection PyTupleAssignmentBalance
-        b, a = butter(5, [low, high], btype='band')
+        b, a = butter(5, [low, high], btype="band")
 
         # Apply the filter to the data
-        filtered_data = filtfilt(b, a, data, axis=0)
-
+        filtered_data = filtfilt(b, a, data, axis=1)
         return filtered_data
 
     def _load_eeg_data(self, filepath):
