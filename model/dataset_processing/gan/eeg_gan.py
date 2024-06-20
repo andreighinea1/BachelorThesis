@@ -17,6 +17,8 @@ from dataset_processing.gan.generator import Generator
 
 
 class EegGan:
+    MODEL_ADD = "gan_model"
+
     def __init__(
             self, dataframe, generator_initial_layers: List[int], discriminator_layers: List[int], *,
             device=None,
@@ -28,7 +30,7 @@ class EegGan:
             # For logging and saving
             model_save_dir: Optional[str] = "model_params/gan",
             log_dir: Optional[str] = "runs/gan",
-            to_train=True,
+            overwrite_training=False, to_train=True,
     ):
         self.dataframe = dataframe
         self.latent_dim = latent_dim
@@ -37,11 +39,35 @@ class EegGan:
         self.num_workers = num_workers
         self.prefetch_factor = prefetch_factor
         self.learning_rate = learning_rate
+
+        # region Init return values
+        self.overall_elapsed_time = None
+        self.overall_formatted_time = None
+        # endregion
+
+        # region Init basic variables
+        self.device = device if device else torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.log_dir = log_dir
+
+        self.model_save_dir = model_save_dir
         self.to_train = to_train
         self._trained = False
 
-        # Determine the device to be used
-        self.device = device if device else torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        if self.model_save_dir is not None:
+            if not os.path.exists(self.model_save_dir):
+                os.makedirs(self.model_save_dir)
+            if not overwrite_training and to_train and os.listdir(self.model_save_dir):
+                raise Exception(f"Model folder not empty, probably already trained: {self.model_save_dir}")
+
+            self.model_save_path = os.path.join(self.model_save_dir, self.MODEL_ADD)
+
+            self.model_final_save_dir = self.model_save_dir + "_saved"
+            self.model_final_save_path = os.path.join(self.model_final_save_dir, self.MODEL_ADD)
+        else:
+            self.model_save_path = None
+            self.model_final_save_dir = None
+            self.model_final_save_path = None
+        # endregion
 
         # Determine the shape of the EEG data
         self.eeg_dim = dataframe.iloc[0]["EEG"].shape[0]
@@ -65,19 +91,6 @@ class EegGan:
             self.optimizer_D, mode='min',
             factor=0.1, patience=scheduler_patience
         )
-
-        # region Init return values
-        self.overall_elapsed_time = None
-        self.overall_formatted_time = None
-        # endregion
-
-        # Logging and saving
-        self.model_save_dir = model_save_dir
-        if not os.path.exists(self.model_save_dir):
-            os.makedirs(self.model_save_dir)
-        self.model_save_path = os.path.join(self.model_save_dir, "gan_model")
-
-        self.log_dir = log_dir
 
     def _get_data_loader(self, shuffle=True):
         return DataLoader(
@@ -216,6 +229,9 @@ class EegGan:
         return pd.concat([self.dataframe, augmented_df], ignore_index=True)
 
     def _save_model(self, epoch):
+        if self.model_save_path is None:
+            return  # Will not save model
+
         model_dicts = {
             "epoch": epoch,
             "model_state_dict": {
@@ -230,6 +246,9 @@ class EegGan:
         torch.save(model_dicts, f"{self.model_save_path}__epoch_{epoch}.pt")
 
     def load_model(self, epoch):
+        if self.model_final_save_path is None:
+            raise Exception("Tried loading model with no path provided!")
+
         model_path = f"{self.model_save_path}__epoch_{epoch}.pt"
         print(f"Trying to load model from {model_path}")
 

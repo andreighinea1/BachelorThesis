@@ -33,7 +33,6 @@ class EarlyStopping:
 
 
 class PreTraining:
-    SAVED_MODEL_DIR_ADD = "_saved"
     MODEL_ADD = "pretrained_model"
 
     def __init__(
@@ -93,7 +92,7 @@ class PreTraining:
 
             self.model_save_path = os.path.join(self.model_save_dir, self.MODEL_ADD)
 
-            self.model_final_save_dir = self.model_save_dir + self.SAVED_MODEL_DIR_ADD
+            self.model_final_save_dir = self.model_save_dir + "_saved"
             self.model_final_save_path = os.path.join(self.model_final_save_dir, self.MODEL_ADD)
         else:
             self.model_save_path = None

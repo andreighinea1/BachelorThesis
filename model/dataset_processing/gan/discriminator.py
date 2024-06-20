@@ -16,4 +16,5 @@ class Discriminator(nn.Module):
         self.main = nn.Sequential(*layers)
 
     def forward(self, x):
+        x = x.view(x.size(0), -1, x.size(1))
         return self.main(x).view(-1, 1).squeeze(1)
