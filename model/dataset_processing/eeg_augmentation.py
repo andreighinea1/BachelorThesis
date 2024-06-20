@@ -107,20 +107,20 @@ class EEGAugmentation:
             xF = self._freq_fourier_transform(x)
             xFa = self._freq_spectral_perturbation(xF)
 
-            augmented_data.append({
-                "Subject": row["Subject"],
-                "Trial": row["Trial"],
-                "Trial_Prefix": row["Trial_Prefix"],
-                "Trial_Rep": row["Trial_Rep"],
-                "Date": row["Date"],
-                "Start_Frame": row["Start_Frame"],
+            augmented_row = dict()
+            # Optionally add metadata if they exist in the DataFrame
+            for column in ["Subject", "Trial", "Trial_Prefix", "Trial_Rep", "Date", "Start_Frame"]:
+                if column in row:
+                    augmented_row[column] = row[column]
 
+            augmented_row.update({
                 "EEG": x,  # Original EEG (but in torch format)
                 "EEG_Time_Augmented": xa,  # Time Augmented EEG
                 "EEG_Frequency": xF,  # Frequency domain representation
                 "EEG_Frequency_Augmented": xFa,  # Frequency Augmented EEG
                 "Verdict": row["Verdict"],
             })
+            augmented_data.append(augmented_row)
 
         # Create a new DataFrame with the augmented data
         self.augmented_df = pd.DataFrame(augmented_data)

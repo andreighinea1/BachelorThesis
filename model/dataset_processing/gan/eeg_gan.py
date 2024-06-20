@@ -215,12 +215,8 @@ class EegGan:
 
             for i in range(batch_size):
                 new_records.append({
-                    "Subject": "Generated",
-                    "Trial": -1,
-                    "Trial_Prefix": "GAN",
-                    "Trial_Rep": 1,
-                    "Date": "N/A",
                     "Start_Frame": 0,
+                    "Phase": "GAN",
                     "EEG": generated_eeg[i],
                     "Verdict": verdict[i],
                 })

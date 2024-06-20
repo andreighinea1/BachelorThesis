@@ -19,6 +19,7 @@ class EpocDatasetLoader:
         self.target_fs = target_fs
         self.tolerance = tolerance
         self.eeg_cols = [f"EEG.{ch}" for ch in self.EEG_CHANNELS]
+        self.window_size = self.seconds_per_eeg * self.original_fs
 
     def process_dataset(self):
         all_segments = []
@@ -69,38 +70,48 @@ class EpocDatasetLoader:
 
                     # Convert DataFrame to NumPy array, transposed to (num_channels, num_samples)
                     eeg_data = segment_df[self.eeg_cols].to_numpy().T
-                    if eeg_data.shape[0] != len(self.EEG_CHANNELS):
+                    num_channels, num_samples = eeg_data.shape
+                    if num_channels != len(self.EEG_CHANNELS):
                         raise Exception(f"Unexpected eeg_data shape: {eeg_data.shape}")
 
-                    # Apply bandpass filter
-                    eeg_data = self._apply_bandpass_filter(eeg_data)
+                    # Segment the EEG data into 1-second windows
+                    num_segments = num_samples // self.window_size
+                    for i in range(num_segments):
+                        start_frame = i * self.window_size
+                        end_frame = start_frame + self.window_size
 
-                    # Downsample the data
-                    eeg_data = self._downsample_data(eeg_data)
+                        eeg_segment = eeg_data[:, start_frame:end_frame]
 
-                    eeg_tensor = torch.tensor(eeg_data, dtype=torch.float32)
+                        # Apply bandpass filter
+                        eeg_segment = self._apply_bandpass_filter(eeg_segment)
 
-                    # Get the verdict from the surveys
-                    verdict = next((
-                        int(survey["answer_text"][0])
-                        for survey in surveys
-                        if survey["phase_name"] == phase_name
-                    ), None)
-                    if verdict is None:
-                        raise Exception(f"Answer for phase `{phase_name}` not found!")
+                        # Downsample the data
+                        eeg_segment = self._downsample_data(eeg_segment)
 
-                    if "positive" in marker["label"]:
-                        verdict = 1
-                    elif "neutral" in marker["label"]:
-                        verdict = 0
-                    elif "negative" in marker["label"]:
-                        verdict = -1
+                        eeg_tensor = torch.tensor(eeg_segment, dtype=torch.float32)
 
-                    eeg_segments.append({
-                        "Phase": phase_name,
-                        "EEG": eeg_tensor,
-                        "Verdict": verdict,
-                    })
+                        # Get the verdict from the surveys
+                        verdict = next((
+                            int(survey["answer_text"][0])
+                            for survey in surveys
+                            if survey["phase_name"] == phase_name
+                        ), None)
+                        if verdict is None:
+                            raise Exception(f"Answer for phase `{phase_name}` not found!")
+
+                        if "positive" in marker["label"]:
+                            verdict = 1
+                        elif "neutral" in marker["label"]:
+                            verdict = 0
+                        elif "negative" in marker["label"]:
+                            verdict = -1
+
+                        eeg_segments.append({
+                            "Start_Frame": start_frame,
+                            "Phase": phase_name,
+                            "EEG": eeg_tensor,
+                            "Verdict": verdict,
+                        })
 
         return eeg_segments
 

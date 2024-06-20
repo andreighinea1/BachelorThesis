@@ -112,9 +112,10 @@ class SeedDatasetLoader:
         random_row = _df.sample(n=1).iloc[0]
         random_eeg = random_row["EEG"]
         random_channel = random.randint(0, 61)
+        num_channels, num_samples = random_eeg.shape
 
         # Create a time array based on the number of samples and the sampling rate
-        time = np.linspace(0, random_eeg.shape[1] / self._fs, random_eeg.shape[1])
+        time = np.linspace(0, num_samples / self._fs, num_samples)
 
         # Plotting
         plt.figure(figsize=(15, 5), dpi=150)
