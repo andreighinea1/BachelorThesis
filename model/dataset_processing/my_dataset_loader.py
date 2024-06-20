@@ -5,7 +5,7 @@ from datetime import datetime
 import numpy as np
 import pandas as pd
 import torch
-from scipy.signal import resample, butter, filtfilt
+from scipy.signal import decimate, butter, filtfilt
 
 
 class EpocDatasetLoader:
@@ -67,8 +67,11 @@ class EpocDatasetLoader:
                     if not self._check_sample_rate(segment_df):
                         raise Exception(f"Sample rate accuracy check failed for phase `{phase_name}`")
 
+                    # Convert DataFrame to NumPy array
+                    eeg_data = segment_df[self.eeg_cols].to_numpy()
+
                     # Downsample the data
-                    eeg_data = self._downsample_data(segment_df[self.eeg_cols].values)
+                    eeg_data = self._downsample_data(eeg_data)
 
                     # Apply bandpass filter
                     eeg_data = self._apply_bandpass_filter(eeg_data)
@@ -109,7 +112,6 @@ class EpocDatasetLoader:
         Returns:
             bool: True if the sample rate is within the tolerance, False otherwise.
         """
-
         timestamps = segment_df["Timestamp"].values
         diffs = np.diff(timestamps)
         expected_diff = 1.0 / self.original_fs
@@ -117,21 +119,19 @@ class EpocDatasetLoader:
 
     def _downsample_data(self, data):
         """
-        Downsample the data to the target_fs.
+        Downsample the data to the target_fs using decimation.
 
         Args:
-            data (np.ndarray): Original EEG data. Numpy array of shape (original_fs, num_channels)
+            data (np.ndarray): Original EEG data. Numpy array of shape (num_samples, num_channels)
 
         Returns:
-            np.ndarray: Downsampled EEG data. Numpy array of shape (target_fs, num_channels)
+            np.ndarray: Downsampled EEG data. Numpy array of shape (num_samples_downsampled, num_channels)
         """
+        # Calculate the decimation factor
+        decimation_factor = int(self.original_fs / self.target_fs)
 
-        # Calculate the number of samples after down-sampling
-        num_samples = int(data.shape[0] * (self.target_fs / self.original_fs))
-
-        # Resample the data to the new number of samples
-        downsampled_data = resample(data, num_samples, axis=0)
-
+        # Apply decimation to each channel
+        downsampled_data = decimate(data, decimation_factor, axis=0, zero_phase=True)
         return downsampled_data
 
     def _apply_bandpass_filter(self, data, low_cut=0.5, high_cut=75.0):
@@ -175,7 +175,6 @@ class EpocDatasetLoader:
         Returns:
             pd.DataFrame: DataFrame containing the EEG data.
         """
-
         df = pd.read_csv(filepath, skiprows=1)
         columns_to_keep = ["Timestamp"] + self.eeg_cols + ["EQ.OVERALL"]
         missing_cols = set(columns_to_keep) - set(df.columns)
@@ -195,7 +194,6 @@ class EpocDatasetLoader:
         Returns:
             dict: Dictionary containing the JSON data.
         """
-
         with open(filepath, "r") as f:
             data = json.load(f)
         return data
