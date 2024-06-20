@@ -71,10 +71,9 @@ class EegGan:
 
         # Determine the shape of the EEG data
         self.eeg_dim = dataframe.iloc[0]["EEG"].shape[0]
-        generator_initial_layers.append(self.eeg_dim)
 
         # Initialize the GAN components with dynamic layers
-        self.generator = Generator(self.latent_dim, generator_initial_layers).to(self.device)
+        self.generator = Generator(self.latent_dim, generator_initial_layers, self.eeg_dim).to(self.device)
         self.discriminator = Discriminator(self.eeg_dim, discriminator_layers).to(self.device)
 
         # Loss function and optimizers
@@ -84,11 +83,11 @@ class EegGan:
 
         # Learning rate scheduler
         self.scheduler_G = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            self.optimizer_G, mode='min',
+            self.optimizer_G, mode="min",
             factor=0.1, patience=scheduler_patience
         )
         self.scheduler_D = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            self.optimizer_D, mode='min',
+            self.optimizer_D, mode="min",
             factor=0.1, patience=scheduler_patience
         )
 
@@ -199,7 +198,7 @@ class EegGan:
             writer.close()
 
         # Rename folder to keep the training "saved"
-        os.rename(self.model_save_dir, self.model_final_save_dir)  # TODO: Implement `model_final_save_dir`
+        os.rename(self.model_save_dir, self.model_final_save_dir)
         self._trained = True
 
         return

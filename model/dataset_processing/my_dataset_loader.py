@@ -88,7 +88,7 @@ class EpocDatasetLoader:
                         # Downsample the data
                         eeg_segment = self._downsample_data(eeg_segment)
 
-                        eeg_tensor = torch.tensor(eeg_segment, dtype=torch.float32)
+                        eeg_tensor = torch.tensor(eeg_segment.copy(), dtype=torch.float32)
 
                         # Get the verdict from the surveys
                         verdict = next((
