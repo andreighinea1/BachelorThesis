@@ -2,17 +2,22 @@ import json
 import os
 from datetime import datetime
 
+import numpy as np
 import pandas as pd
 import torch
+from scipy.signal import resample, butter, filtfilt
 
 
 class EpocDatasetLoader:
     EEG_CHANNELS = ["AF3", "F7", "F3", "FC5", "T7", "P7", "O1", "O2", "P8", "T8", "FC6", "F4", "F8", "AF4"]
 
-    def __init__(self, *, my_eeg_dir="datasets/MY_EPOC_X/EEG", seconds_per_eeg=1, target_fs=200):
+    def __init__(self, *, my_eeg_dir="datasets/MY_EPOC_X/EEG", seconds_per_eeg=1,
+                 original_fs=256, target_fs=200, tolerance=0.01):
         self.my_eeg_dir = my_eeg_dir
         self.seconds_per_eeg = seconds_per_eeg
+        self.original_fs = original_fs
         self.target_fs = target_fs
+        self.tolerance = tolerance
         self.eeg_cols = [f"EEG.{ch}" for ch in self.EEG_CHANNELS]
 
     def process_dataset(self):
@@ -58,7 +63,16 @@ class EpocDatasetLoader:
                     if missing_cols:
                         raise Exception(f"Missing columns in EEG data: {missing_cols}")
 
-                    eeg_data = segment_df[self.eeg_cols].values
+                    # Check the sample rate accuracy
+                    if not self._check_sample_rate(segment_df):
+                        raise Exception(f"Sample rate accuracy check failed for phase `{phase_name}`")
+
+                    # Downsample the data
+                    eeg_data = self._downsample_data(segment_df[self.eeg_cols].values)
+
+                    # Apply bandpass filter
+                    eeg_data = self._apply_bandpass_filter(eeg_data)
+
                     eeg_tensor = torch.tensor(eeg_data.T, dtype=torch.float32)
 
                     # Get the verdict from the surveys
@@ -85,8 +99,83 @@ class EpocDatasetLoader:
 
         return eeg_segments
 
+    def _check_sample_rate(self, segment_df):
+        """
+        Check if the number of samples in each second is approximately equal to the original_fs.
+
+        Args:
+            segment_df (pd.DataFrame): DataFrame containing the segment of EEG data to check.
+
+        Returns:
+            bool: True if the sample rate is within the tolerance, False otherwise.
+        """
+
+        timestamps = segment_df["Timestamp"].values
+        diffs = np.diff(timestamps)
+        expected_diff = 1.0 / self.original_fs
+        return np.all(np.abs(diffs - expected_diff) < expected_diff * self.tolerance)
+
+    def _downsample_data(self, data):
+        """
+        Downsample the data to the target_fs.
+
+        Args:
+            data (np.ndarray): Original EEG data. Numpy array of shape (original_fs, num_channels)
+
+        Returns:
+            np.ndarray: Downsampled EEG data. Numpy array of shape (target_fs, num_channels)
+        """
+
+        # Calculate the number of samples after down-sampling
+        num_samples = int(data.shape[0] * (self.target_fs / self.original_fs))
+
+        # Resample the data to the new number of samples
+        downsampled_data = resample(data, num_samples, axis=0)
+
+        return downsampled_data
+
+    def _apply_bandpass_filter(self, data, low_cut=0.5, high_cut=75.0):
+        """
+        Apply a bandpass filter to the data.
+        Filters frequencies between low_cut and high_cut Hz.
+
+        Args:
+            data (np.ndarray): The input data to be filtered.
+            low_cut (float): The lower cutoff frequency in Hz.
+            high_cut (float): The upper cutoff frequency in Hz.
+
+        Returns:
+            np.ndarray: The bandpass filtered data.
+        """
+        # TODO: Maybe try with 0.3Hz to 50Hz
+
+        # Calculate the Nyquist frequency
+        nyquist = 0.5 * self.target_fs
+
+        # Normalize the cutoff frequencies
+        low = low_cut / nyquist
+        high = high_cut / nyquist
+
+        # Design a Butterworth bandpass filter
+        # noinspection PyTupleAssignmentBalance
+        b, a = butter(5, [low, high], btype='band')
+
+        # Apply the filter to the data
+        filtered_data = filtfilt(b, a, data, axis=0)
+
+        return filtered_data
+
     def _load_eeg_data(self, filepath):
-        # Load CSV file, skipping the first line and keeping only relevant columns
+        """
+        Load EEG data from a CSV file, skipping the first line and keeping only relevant columns.
+
+        Args:
+            filepath (str): Path to the CSV file.
+
+        Returns:
+            pd.DataFrame: DataFrame containing the EEG data.
+        """
+
         df = pd.read_csv(filepath, skiprows=1)
         columns_to_keep = ["Timestamp"] + self.eeg_cols + ["EQ.OVERALL"]
         missing_cols = set(columns_to_keep) - set(df.columns)
@@ -97,6 +186,16 @@ class EpocDatasetLoader:
 
     @staticmethod
     def _load_json_data(filepath):
+        """
+        Load marker data from a JSON file.
+
+        Args:
+            filepath (str): Path to the JSON file.
+
+        Returns:
+            dict: Dictionary containing the JSON data.
+        """
+
         with open(filepath, "r") as f:
             data = json.load(f)
         return data
