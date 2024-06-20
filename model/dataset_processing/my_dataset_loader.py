@@ -70,11 +70,11 @@ class EpocDatasetLoader:
                     # Convert DataFrame to NumPy array
                     eeg_data = segment_df[self.eeg_cols].to_numpy()
 
-                    # Downsample the data
-                    eeg_data = self._downsample_data(eeg_data)
-
                     # Apply bandpass filter
                     eeg_data = self._apply_bandpass_filter(eeg_data)
+
+                    # Downsample the data
+                    eeg_data = self._downsample_data(eeg_data)
 
                     eeg_tensor = torch.tensor(eeg_data.T, dtype=torch.float32)
 
