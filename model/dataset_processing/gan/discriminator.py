@@ -16,5 +16,11 @@ class Discriminator(nn.Module):
         self.main = nn.Sequential(*layers)
 
     def forward(self, x):
-        x = x.view(x.size(0), -1, x.size(1))
-        return self.main(x).view(-1, 1).squeeze(1)
+        print("Input size:", x.size())
+        for layer in self.main:
+            x = layer(x)
+            if "Conv1d" in layer.__class__.__name__:
+                print(layer.__class__.__name__, "output size:", x.size())
+        x = x.view(-1, 1).squeeze(1)
+        print("Final output size:", x.size())
+        return x

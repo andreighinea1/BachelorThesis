@@ -6,15 +6,22 @@ class Generator(nn.Module):
         super(Generator, self).__init__()
         layers = []
         prev_dim = input_dim
+
+        # Intermediate layers
         for dim in layer_dims:
-            layers.append(nn.ConvTranspose1d(prev_dim, dim, 4, 2, 1, bias=False))
+            layers.append(nn.ConvTranspose1d(prev_dim, dim, kernel_size=4, stride=2, padding=1, bias=False))
             layers.append(nn.BatchNorm1d(dim))
             layers.append(nn.ReLU(True))
             prev_dim = dim
-        layers.append(nn.ConvTranspose1d(prev_dim, output_dim, 4, 2, 1, bias=False))
+
+        layers.append(nn.ConvTranspose1d(prev_dim, output_dim, kernel_size=4, stride=4, padding=0, bias=False))
         layers.append(nn.Tanh())
         self.main = nn.Sequential(*layers)
 
     def forward(self, x):
-        x = x.view(x.size(0), x.size(1), 1)
-        return self.main(x)
+        print("Generator - Input size:", x.size())
+        for layer in self.main:
+            x = layer(x)
+            if "ConvTranspose1d" in layer.__class__.__name__:
+                print(layer.__class__.__name__, "output size:", x.size())
+        return x
