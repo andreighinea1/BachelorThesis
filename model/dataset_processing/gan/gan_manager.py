@@ -7,7 +7,8 @@ from dataset_processing.gan.eeg_gan import EegGan
 class GanManager:
     def __init__(self, dataframe, generator_layers, discriminator_layers, *,
                  batch_size=10, lstm_dim=128, use_full_lstm=False, latent_dim=100,
-                 epochs=100, learning_rate=2e-4, beta1=0.5, beta2=0.999, scheduler_patience=10,
+                 epochs=100, learning_rate_D=2e-4, learning_rate_G=2e-4, beta1=0.5, beta2=0.999,
+                 scheduler_patience_D=10, scheduler_patience_G=10, use_label_smoothing=False,
                  model_save_dir="model_params/gan", log_dir="runs/gan", overwrite_training=False, to_train=True):
         self.dataframe = dataframe
         self.generator_layers = generator_layers
@@ -17,10 +18,13 @@ class GanManager:
         self.use_full_lstm = use_full_lstm
         self.latent_dim = latent_dim
         self.epochs = epochs
-        self.learning_rate = learning_rate
+        self.learning_rate_D = learning_rate_D
+        self.learning_rate_G = learning_rate_G
         self.beta1 = beta1
         self.beta2 = beta2
-        self.scheduler_patience = scheduler_patience
+        self.scheduler_patience_D = scheduler_patience_D
+        self.scheduler_patience_G = scheduler_patience_G
+        self.use_label_smoothing = use_label_smoothing
         self.model_save_dir = model_save_dir
         self.log_dir = log_dir
         self.overwrite_training = overwrite_training
@@ -55,10 +59,13 @@ class GanManager:
                 lstm_dim=self.lstm_dim,
                 latent_dim=self.latent_dim,
                 epochs=self.epochs,
-                learning_rate=self.learning_rate,
+                learning_rate_D=self.learning_rate_D,
+                learning_rate_G=self.learning_rate_G,
                 beta1=self.beta1,
                 beta2=self.beta2,
-                scheduler_patience=self.scheduler_patience,
+                scheduler_patience_D=self.scheduler_patience_D,
+                scheduler_patience_G=self.scheduler_patience_G,
+                use_label_smoothing=self.use_label_smoothing,
                 model_save_dir=model_save_dir,
                 log_dir=log_dir,
                 overwrite_training=self.overwrite_training,

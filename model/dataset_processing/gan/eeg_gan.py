@@ -25,7 +25,9 @@ class EegGan:
             batch_size=10, num_workers=5, prefetch_factor=2,
             # For model
             lstm_dim=128, use_full_lstm=False, latent_dim=100, epochs=100,
-            learning_rate=2e-4, beta1=0.5, beta2=0.999, scheduler_patience=10,
+            learning_rate_D=2e-4, learning_rate_G=2e-4,
+            beta1=0.5, beta2=0.999, scheduler_patience_D=10, scheduler_patience_G=10,
+            use_label_smoothing=False,
             # For logging and saving
             model_save_dir: Optional[str] = "model_params/gan",
             log_dir: Optional[str] = "runs/gan",
@@ -38,7 +40,7 @@ class EegGan:
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.prefetch_factor = prefetch_factor
-        self.learning_rate = learning_rate
+        self.use_label_smoothing = use_label_smoothing
 
         # region Init return values
         self.overall_elapsed_time = None
@@ -89,17 +91,17 @@ class EegGan:
 
         # Loss function and optimizers
         self.criterion = nn.BCELoss()
-        self.optimizer_G = optim.Adam(self.generator.parameters(), lr=learning_rate, betas=(beta1, beta2))
-        self.optimizer_D = optim.Adam(self.discriminator.parameters(), lr=learning_rate, betas=(beta1, beta2))
+        self.optimizer_G = optim.Adam(self.generator.parameters(), lr=learning_rate_G, betas=(beta1, beta2))
+        self.optimizer_D = optim.Adam(self.discriminator.parameters(), lr=learning_rate_D, betas=(beta1, beta2))
 
         # Learning rate scheduler
         self.scheduler_G = torch.optim.lr_scheduler.ReduceLROnPlateau(
             self.optimizer_G, mode="min",
-            factor=0.1, patience=scheduler_patience
+            factor=0.1, patience=scheduler_patience_G
         )
         self.scheduler_D = torch.optim.lr_scheduler.ReduceLROnPlateau(
             self.optimizer_D, mode="min",
-            factor=0.1, patience=scheduler_patience
+            factor=0.1, patience=scheduler_patience_D
         )
 
         # MaxAbsScaler for data normalization
@@ -143,8 +145,16 @@ class EegGan:
                     batch_size = real_eeg.size(0)
 
                     # Generate labels
-                    valid = torch.ones(batch_size, 1, device=self.device)
-                    fake = torch.zeros(batch_size, 1, device=self.device)
+                    # valid = torch.ones(batch_size, 1, device=self.device)
+                    # fake = torch.zeros(batch_size, 1, device=self.device)
+                    #
+                    # if self.use_label_smoothing:
+                    #     valid -= 0.1
+                    #     fake += 0.1
+
+                    # Generate labels with label smoothing
+                    valid = torch.ones(batch_size, 1, device=self.device) - 0.1
+                    fake = torch.zeros(batch_size, 1, device=self.device) + 0.1
 
                     # Train Generator
                     self.optimizer_G.zero_grad()
