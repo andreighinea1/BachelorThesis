@@ -118,18 +118,24 @@ class EpocDatasetLoader:
         return eeg_segments
 
     def segment_df_final(self, dataframe):
+        _first_eeg = dataframe.iloc[0]["EEG"]
+        if len(_first_eeg.shape) != 2:
+            raise ValueError("Not ok first eeg!")
+        num_channels, num_samples = _first_eeg.shape
+        num_segments = num_samples // self.short_window_size
+
         eeg_segments = []
         for _, row in dataframe.iterrows():
             eeg_tensor = row["EEG"]
-            num_channels, num_samples = eeg_tensor.shape
-            num_segments = num_samples // self.short_window_size
+            if len(eeg_tensor.shape) != 2:
+                eeg_tensor = eeg_tensor.view(num_channels, num_samples)
 
             for i in range(num_segments):
                 start_frame = i * self.short_window_size
                 end_frame = start_frame + self.short_window_size
                 eeg_segment = eeg_tensor[:, start_frame:end_frame]
 
-                eeg_tensor_segment = torch.tensor(eeg_segment.copy(), dtype=torch.float32)
+                eeg_tensor_segment = torch.tensor(eeg_segment.clone(), dtype=torch.float32)
 
                 eeg_segments.append({
                     "Start_Frame": row["Start_Frame"] + start_frame,
