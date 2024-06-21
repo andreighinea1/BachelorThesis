@@ -93,8 +93,12 @@ class GanManager:
                 "EEG": augmented_eeg_data[i],
                 "Verdict": self.verdicts[i]
             })
-        _eeg_augmented_data_df = pd.DataFrame(new_records)
+        augmented_df = pd.DataFrame(new_records)
+
+        # Concatenate the original dataframe with the augmented dataframe
+        combined_df = pd.concat([self.dataframe, augmented_df], ignore_index=True)
 
         print(f"Original dataset size: {len(self.dataframe)}")
-        print(f"Augmented dataset size: {len(_eeg_augmented_data_df)}")
-        return _eeg_augmented_data_df
+        print(f"Augmented dataset size: {len(augmented_df)}")
+        print(f"Combined dataset size: {len(combined_df)}")
+        return combined_df
