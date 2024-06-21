@@ -70,7 +70,7 @@ class EegGan:
         # endregion
 
         # Determine the shape of the EEG data
-        num_samples = eeg_data.shape[1]
+        num_samples = eeg_data.shape[2]
 
         # Initialize the GAN components with dynamic layers
         self.generator = Generator(
@@ -103,10 +103,10 @@ class EegGan:
         )
 
         # MaxAbsScaler for data normalization
-        self.scaler = MaxAbsScaler()
         eeg_data_np = eeg_data.numpy().reshape(-1, num_samples)
+        self.scaler = MaxAbsScaler()
         self.scaler.fit(eeg_data_np)
-        self.eeg_data = torch.tensor(self.scaler.transform(eeg_data_np)).reshape(eeg_data.shape)
+        self.eeg_data = torch.tensor(self.scaler.transform(eeg_data_np)).view(eeg_data.shape)
 
     def _get_data_loader(self, shuffle=True):
         return DataLoader(
@@ -137,40 +137,33 @@ class EegGan:
                 epoch_d_loss = 0.0
                 batch_count = len(dataloader)
 
-                with tqdm(dataloader, desc=f"Epoch {epoch}", leave=False) as pbar:
-                    for i, (real_eeg,) in enumerate(dataloader):
-                        # noinspection PyUnresolvedReferences
-                        real_eeg = real_eeg.float().to(self.device)
-                        batch_size = real_eeg.size(0)
+                for i, (real_eeg,) in enumerate(dataloader):
+                    # noinspection PyUnresolvedReferences
+                    real_eeg = real_eeg.float().to(self.device)
+                    batch_size = real_eeg.size(0)
 
-                        # Generate labels
-                        valid = torch.ones(batch_size, device=self.device)
-                        fake = torch.zeros(batch_size, device=self.device)
+                    # Generate labels
+                    valid = torch.ones(batch_size, 1, device=self.device)
+                    fake = torch.zeros(batch_size, 1, device=self.device)
 
-                        # Train Generator
-                        self.optimizer_G.zero_grad()
-                        z = torch.randn(batch_size, 1, self.latent_dim, device=self.device)
-                        generated_eeg = self.generator(z)
-                        g_loss = self.criterion(self.discriminator(generated_eeg), valid)
-                        g_loss.backward()
-                        self.optimizer_G.step()
+                    # Train Generator
+                    self.optimizer_G.zero_grad()
+                    z = torch.randn(batch_size, 1, self.latent_dim, device=self.device)
+                    generated_eeg = self.generator(z)
+                    g_loss = self.criterion(self.discriminator(generated_eeg), valid)
+                    g_loss.backward()
+                    self.optimizer_G.step()
 
-                        # Train Discriminator
-                        self.optimizer_D.zero_grad()
-                        real_loss = self.criterion(self.discriminator(real_eeg), valid)
-                        fake_loss = self.criterion(self.discriminator(generated_eeg.detach()), fake)
-                        d_loss = (real_loss + fake_loss) / 2
-                        d_loss.backward()
-                        self.optimizer_D.step()
+                    # Train Discriminator
+                    self.optimizer_D.zero_grad()
+                    real_loss = self.criterion(self.discriminator(real_eeg), valid)
+                    fake_loss = self.criterion(self.discriminator(generated_eeg.detach()), fake)
+                    d_loss = (real_loss + fake_loss) / 2
+                    d_loss.backward()
+                    self.optimizer_D.step()
 
-                        epoch_g_loss += g_loss.item()
-                        epoch_d_loss += d_loss.item()
-
-                        # Update tqdm progress bar with the current loss
-                        pbar.set_description_str(
-                            f"[Epoch {epoch}/{self.epochs}] [Batch {i}/{batch_count}]; "
-                            f"D Loss: {d_loss.item():.4f}, G Loss: {g_loss.item():.4f}"
-                        )
+                    epoch_g_loss += g_loss.item()
+                    epoch_d_loss += d_loss.item()
 
                 # Average losses for the epoch
                 avg_g_loss = epoch_g_loss / batch_count
@@ -183,12 +176,6 @@ class EegGan:
                 # Log metrics to TensorBoard
                 current_lr_G = self.scheduler_G.get_last_lr()[0]
                 current_lr_D = self.scheduler_D.get_last_lr()[0]
-                if writer is not None:
-                    writer.add_scalar("Loss/Generator", avg_g_loss, epoch)
-                    writer.add_scalar("Loss/Discriminator", avg_d_loss, epoch)
-                    writer.add_scalar("Learning Rate/Generator", current_lr_G, epoch)
-                    writer.add_scalar("Learning Rate/Discriminator", current_lr_D, epoch)
-                    writer.add_scalar("Time/epoch", elapsed_time, epoch)
 
                 # Save model at intervals
                 if epoch % 10 == 0 or epoch == self.epochs:
@@ -197,6 +184,13 @@ class EegGan:
 
                 # Calculate the elapsed time for the epoch
                 elapsed_time = time.time() - start_time
+
+                if writer is not None:
+                    writer.add_scalar("Loss/Generator", avg_g_loss, epoch)
+                    writer.add_scalar("Loss/Discriminator", avg_d_loss, epoch)
+                    writer.add_scalar("Learning Rate/Generator", current_lr_G, epoch)
+                    writer.add_scalar("Learning Rate/Discriminator", current_lr_D, epoch)
+                    writer.add_scalar("Time/epoch", elapsed_time, epoch)
 
                 if update_after_every_epoch:
                     overall_pbar.set_description_str(
@@ -225,7 +219,7 @@ class EegGan:
         z = torch.randn(batch_size, 1, self.latent_dim, device=self.device)
         generated_eeg = self.generator(z).cpu().detach().numpy()
         generated_eeg = self.scaler.inverse_transform(generated_eeg.reshape(batch_size, -1))
-        return torch.tensor(generated_eeg).view(batch_size, -1, 1)
+        return torch.tensor(generated_eeg).view(batch_size, 1, -1)
 
     def _save_model(self, epoch):
         if self.model_save_path is None:
