@@ -1,2 +1,4 @@
 tensorboard-pytorch
 tensorboard
+pygraphviz
+torchview

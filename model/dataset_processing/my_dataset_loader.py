@@ -5,21 +5,21 @@ from datetime import datetime
 import numpy as np
 import pandas as pd
 import torch
-from scipy.signal import decimate, butter, filtfilt
+from scipy.signal import butter, filtfilt, resample_poly
 
 
 class EpocDatasetLoader:
     EEG_CHANNELS = ["AF3", "F7", "F3", "FC5", "T7", "P7", "O1", "O2", "P8", "T8", "FC6", "F4", "F8", "AF4"]
 
     def __init__(self, *, my_eeg_dir="datasets/MY_EPOC_X/EEG", seconds_per_eeg=1,
-                 original_fs=256, target_fs=200, tolerance=0.01):
+                 original_fs=256, target_fs=200, tolerance=0.01, seconds_per_eeg_for_gan=60):
         self.my_eeg_dir = my_eeg_dir
-        self.seconds_per_eeg = seconds_per_eeg
         self.original_fs = original_fs
         self.target_fs = target_fs
         self.tolerance = tolerance
         self.eeg_cols = [f"EEG.{ch}" for ch in self.EEG_CHANNELS]
-        self.window_size = self.seconds_per_eeg * self.original_fs
+        self.gan_window_size = seconds_per_eeg_for_gan * target_fs
+        self.short_window_size = seconds_per_eeg * target_fs
 
     def process_dataset(self):
         all_segments = []
@@ -53,69 +53,94 @@ class EpocDatasetLoader:
                 start_timestamp = start_time.timestamp()
                 end_timestamp = end_time.timestamp()
 
-                segment_df = eeg_df[(
+                video_df = eeg_df[(
                         (eeg_df["Timestamp"] >= start_timestamp) &
                         (eeg_df["Timestamp"] <= end_timestamp)
                 )]
 
-                if not segment_df.empty:
-                    # Ensure all columns exist
-                    missing_cols = set(self.eeg_cols) - set(segment_df.columns)
-                    if missing_cols:
-                        raise Exception(f"Missing columns in EEG data: {missing_cols}")
+                if video_df.empty:
+                    raise Exception(f"Video not found from {marker['startDatetime']} to {marker['endDatetime']}")
 
-                    # Check the sample rate accuracy
-                    if not self._check_sample_rate(segment_df):
-                        raise Exception(f"Sample rate accuracy check failed for phase `{phase_name}`")
+                # Ensure all columns exist
+                missing_cols = set(self.eeg_cols) - set(video_df.columns)
+                if missing_cols:
+                    raise Exception(f"Missing columns in EEG data: {missing_cols}")
 
-                    # Convert DataFrame to NumPy array, transposed to (num_channels, num_samples)
-                    eeg_data = segment_df[self.eeg_cols].to_numpy().T
-                    num_channels, num_samples = eeg_data.shape
-                    if num_channels != len(self.EEG_CHANNELS):
-                        raise Exception(f"Unexpected eeg_data shape: {eeg_data.shape}")
+                # Check the sample rate accuracy
+                if not self._check_original_sample_rate_accuracy(video_df):
+                    raise Exception(f"Sample rate accuracy check failed for phase `{phase_name}`")
 
-                    # Segment the EEG data into 1-second windows
-                    num_segments = num_samples // self.window_size
-                    for i in range(num_segments):
-                        start_frame = i * self.window_size
-                        end_frame = start_frame + self.window_size
+                # Get the verdict from the surveys
+                verdict = next((
+                    int(survey["answer_text"][0])
+                    for survey in surveys
+                    if survey["phase_name"] == phase_name
+                ), None)
+                if verdict is None:
+                    raise Exception(f"Answer for phase `{phase_name}` not found!")
 
-                        eeg_segment = eeg_data[:, start_frame:end_frame]
+                # Convert DataFrame to NumPy array, transposed to (num_channels, num_samples)
+                video_eeg_np_data = video_df[self.eeg_cols].to_numpy().T
 
-                        # Apply bandpass filter
-                        eeg_segment = self._apply_bandpass_filter(eeg_segment)
+                # Apply bandpass filter to the whole video
+                video_eeg_np_data = self._apply_bandpass_filter(video_eeg_np_data)
 
-                        # Downsample the data
-                        eeg_segment = self._downsample_data(eeg_segment)
+                # Downsample the entire video
+                video_eeg_np_data = self._downsample_data(video_eeg_np_data)
+                num_channels, num_samples = video_eeg_np_data.shape
 
-                        eeg_tensor = torch.tensor(eeg_segment.copy(), dtype=torch.float32)
+                if num_channels != len(self.EEG_CHANNELS):
+                    raise Exception(f"Unexpected video_eeg_np_data shape: {video_eeg_np_data.shape}")
 
-                        # Get the verdict from the surveys
-                        verdict = next((
-                            int(survey["answer_text"][0])
-                            for survey in surveys
-                            if survey["phase_name"] == phase_name
-                        ), None)
-                        if verdict is None:
-                            raise Exception(f"Answer for phase `{phase_name}` not found!")
+                # Segment the EEG data into 1-minute windows
+                num_segments = num_samples // self.gan_window_size
+                for i in range(num_segments):
+                    start_frame = i * self.gan_window_size
+                    end_frame = start_frame + self.gan_window_size
 
-                        if "positive" in marker["label"]:
-                            verdict = 1
-                        elif "neutral" in marker["label"]:
-                            verdict = 0
-                        elif "negative" in marker["label"]:
-                            verdict = -1
+                    eeg_segment = video_eeg_np_data[:, start_frame:end_frame]
+                    eeg_tensor = torch.tensor(eeg_segment.copy(), dtype=torch.float32)
 
-                        eeg_segments.append({
-                            "Start_Frame": start_frame,
-                            "Phase": phase_name,
-                            "EEG": eeg_tensor,
-                            "Verdict": verdict,
-                        })
+                    if "positive" in marker["label"]:
+                        verdict = 1
+                    elif "neutral" in marker["label"]:
+                        verdict = 0
+                    elif "negative" in marker["label"]:
+                        verdict = -1
+
+                    eeg_segments.append({
+                        "Start_Frame": start_frame,
+                        "Phase": phase_name,
+                        "EEG": eeg_tensor,
+                        "Verdict": verdict,
+                    })
 
         return eeg_segments
 
-    def _check_sample_rate(self, segment_df):
+    def segment_df_final(self, dataframe):
+        eeg_segments = []
+        for _, row in dataframe.iterrows():
+            eeg_tensor = row["EEG"]
+            num_channels, num_samples = eeg_tensor.shape
+            num_segments = num_samples // self.short_window_size
+
+            for i in range(num_segments):
+                start_frame = i * self.short_window_size
+                end_frame = start_frame + self.short_window_size
+                eeg_segment = eeg_tensor[:, start_frame:end_frame]
+
+                eeg_tensor_segment = torch.tensor(eeg_segment.copy(), dtype=torch.float32)
+
+                eeg_segments.append({
+                    "Start_Frame": row["Start_Frame"] + start_frame,
+                    "Phase": row["Phase"],
+                    "EEG": eeg_tensor_segment,
+                    "Verdict": row["Verdict"],
+                })
+
+        return pd.DataFrame(eeg_segments)
+
+    def _check_original_sample_rate_accuracy(self, segment_df):
         """
         Check if the number of samples in each second is approximately equal to the original_fs.
 
@@ -132,7 +157,7 @@ class EpocDatasetLoader:
 
     def _downsample_data(self, data):
         """
-        Downsample the data to the target_fs using decimation.
+        Downsample the data to the target_fs using polyphase filtering.
 
         Args:
             data (np.ndarray): Original EEG data. Numpy array of shape (num_channels, num_samples)
@@ -140,11 +165,8 @@ class EpocDatasetLoader:
         Returns:
             np.ndarray: Downsampled EEG data. Numpy array of shape (num_channels, num_samples_downsampled)
         """
-        # Calculate the decimation factor
-        decimation_factor = int(self.original_fs / self.target_fs)
-
-        # Apply decimation to each channel
-        downsampled_data = decimate(data, decimation_factor, axis=1, zero_phase=True)
+        # Apply polyphase resampling to each channel
+        downsampled_data = resample_poly(data, up=self.target_fs, down=self.original_fs, axis=1)
         return downsampled_data
 
     def _apply_bandpass_filter(self, data, low_cut=0.5, high_cut=75.0):

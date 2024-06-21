@@ -20,7 +20,7 @@ class EegGan:
     MODEL_ADD = "gan_model"
 
     def __init__(
-            self, dataframe, generator_initial_layers: List[int], discriminator_layers: List[int], *,
+            self, dataframe, generator_layers: List[int], discriminator_layers: List[int], *,
             device=None,
             # For DataLoader
             batch_size=10, num_workers=5, prefetch_factor=2,
@@ -73,7 +73,7 @@ class EegGan:
         self.eeg_dim = dataframe.iloc[0]["EEG"].shape[0]
 
         # Initialize the GAN components with dynamic layers
-        self.generator = Generator(self.latent_dim, generator_initial_layers, self.eeg_dim).to(self.device)
+        self.generator = Generator(self.latent_dim, generator_layers, self.eeg_dim).to(self.device)
         self.discriminator = Discriminator(self.eeg_dim, discriminator_layers).to(self.device)
 
         # Loss function and optimizers
@@ -134,6 +134,8 @@ class EegGan:
                         self.optimizer_G.zero_grad()
                         z = torch.randn(batch_size, self.latent_dim, 1, device=self.device)
                         generated_eeg = self.generator(z)
+                        print(f"{real_eeg.size()=}")
+                        print(f"{generated_eeg.size()=}")
                         g_loss = self.criterion(self.discriminator(generated_eeg), valid)
                         g_loss.backward()
                         self.optimizer_G.step()
