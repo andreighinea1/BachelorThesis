@@ -27,11 +27,3 @@ class EEGDataset(Dataset):
 
     def get_verdict(self, index):
         return self.index_to_verdict[index]
-
-
-class EEGGanDataset(EEGDataset):
-    def __getitem__(self, idx):
-        row = self.dataframe.iloc[idx]
-        eeg = row["EEG"]
-        y_idx = self.verdict_to_index[row["Verdict"]]
-        return eeg, y_idx

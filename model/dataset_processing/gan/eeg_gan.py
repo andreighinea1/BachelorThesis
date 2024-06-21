@@ -3,15 +3,14 @@ import time
 from datetime import timedelta
 from typing import List, Optional
 
-import pandas as pd
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader
+from sklearn.preprocessing import MaxAbsScaler
+from torch.utils.data import DataLoader, TensorDataset
 from torch.utils.tensorboard import SummaryWriter
 from tqdm.auto import tqdm
 
-from dataset_processing.eeg_dataset import EEGGanDataset
 from dataset_processing.gan.discriminator import Discriminator
 from dataset_processing.gan.generator import Generator
 
@@ -20,20 +19,21 @@ class EegGan:
     MODEL_ADD = "gan_model"
 
     def __init__(
-            self, dataframe, generator_layers: List[int], discriminator_layers: List[int], *,
+            self, eeg_data: torch.Tensor, generator_layers: List[int], discriminator_layers: List[int], *,
             device=None,
             # For DataLoader
             batch_size=10, num_workers=5, prefetch_factor=2,
             # For model
-            latent_dim=100, epochs=100,
-            learning_rate=1e-4, scheduler_patience=10,
+            lstm_dim=128, use_full_lstm=False, latent_dim=100, epochs=100,
+            learning_rate=2e-4, beta1=0.5, beta2=0.999, scheduler_patience=10,
             # For logging and saving
             model_save_dir: Optional[str] = "model_params/gan",
             log_dir: Optional[str] = "runs/gan",
             overwrite_training=False, to_train=True,
     ):
-        self.dataframe = dataframe
+        self.eeg_data = eeg_data
         self.latent_dim = latent_dim
+        self.lstm_dim = lstm_dim
         self.epochs = epochs
         self.batch_size = batch_size
         self.num_workers = num_workers
@@ -70,16 +70,27 @@ class EegGan:
         # endregion
 
         # Determine the shape of the EEG data
-        self.eeg_dim = dataframe.iloc[0]["EEG"].shape[0]
+        num_samples = eeg_data.shape[1]
 
         # Initialize the GAN components with dynamic layers
-        self.generator = Generator(self.latent_dim, generator_layers, self.eeg_dim).to(self.device)
-        self.discriminator = Discriminator(self.eeg_dim, discriminator_layers).to(self.device)
+        self.generator = Generator(
+            latent_dim=self.latent_dim,
+            conv_dims=generator_layers,
+            lstm_dim=self.lstm_dim,
+            eeg_length=num_samples,
+            use_full_lstm=use_full_lstm,
+        ).to(self.device)
+        self.discriminator = Discriminator(
+            conv_dims=discriminator_layers,
+            lstm_dim=self.lstm_dim,
+            eeg_length=num_samples,
+            use_full_lstm=use_full_lstm,
+        ).to(self.device)
 
         # Loss function and optimizers
         self.criterion = nn.BCELoss()
-        self.optimizer_G = optim.Adam(self.generator.parameters(), lr=self.learning_rate)
-        self.optimizer_D = optim.Adam(self.discriminator.parameters(), lr=self.learning_rate)
+        self.optimizer_G = optim.Adam(self.generator.parameters(), lr=learning_rate, betas=(beta1, beta2))
+        self.optimizer_D = optim.Adam(self.discriminator.parameters(), lr=learning_rate, betas=(beta1, beta2))
 
         # Learning rate scheduler
         self.scheduler_G = torch.optim.lr_scheduler.ReduceLROnPlateau(
@@ -91,9 +102,15 @@ class EegGan:
             factor=0.1, patience=scheduler_patience
         )
 
+        # MaxAbsScaler for data normalization
+        self.scaler = MaxAbsScaler()
+        eeg_data_np = eeg_data.numpy().reshape(-1, num_samples)
+        self.scaler.fit(eeg_data_np)
+        self.eeg_data = torch.tensor(self.scaler.transform(eeg_data_np)).reshape(eeg_data.shape)
+
     def _get_data_loader(self, shuffle=True):
         return DataLoader(
-            EEGGanDataset(self.dataframe),
+            TensorDataset(self.eeg_data),
             batch_size=self.batch_size,
             shuffle=shuffle,
             pin_memory=True,
@@ -121,7 +138,7 @@ class EegGan:
                 batch_count = len(dataloader)
 
                 with tqdm(dataloader, desc=f"Epoch {epoch}", leave=False) as pbar:
-                    for i, (real_eeg, _) in enumerate(dataloader):
+                    for i, (real_eeg,) in enumerate(dataloader):
                         # noinspection PyUnresolvedReferences
                         real_eeg = real_eeg.float().to(self.device)
                         batch_size = real_eeg.size(0)
@@ -132,10 +149,8 @@ class EegGan:
 
                         # Train Generator
                         self.optimizer_G.zero_grad()
-                        z = torch.randn(batch_size, self.latent_dim, 1, device=self.device)
+                        z = torch.randn(batch_size, 1, self.latent_dim, device=self.device)
                         generated_eeg = self.generator(z)
-                        print(f"{real_eeg.size()=}")
-                        print(f"{generated_eeg.size()=}")
                         g_loss = self.criterion(self.discriminator(generated_eeg), valid)
                         g_loss.backward()
                         self.optimizer_G.step()
@@ -205,25 +220,12 @@ class EegGan:
 
         return
 
-    def augment_data(self):
-        dataloader = self._get_data_loader(shuffle=False)
-
-        new_records = []
-        for real_eeg, verdict in dataloader:
-            batch_size = real_eeg.size(0)
-            z = torch.randn(batch_size, self.latent_dim, 1, device=self.device)
-            generated_eeg = self.generator(z).cpu().detach().numpy()
-
-            for i in range(batch_size):
-                new_records.append({
-                    "Start_Frame": 0,
-                    "Phase": "GAN",
-                    "EEG": generated_eeg[i],
-                    "Verdict": verdict[i],
-                })
-        augmented_df = pd.DataFrame(new_records)
-
-        return pd.concat([self.dataframe, augmented_df], ignore_index=True)
+    def augment_data(self, eeg_data):
+        batch_size = eeg_data.size(0)
+        z = torch.randn(batch_size, 1, self.latent_dim, device=self.device)
+        generated_eeg = self.generator(z).cpu().detach().numpy()
+        generated_eeg = self.scaler.inverse_transform(generated_eeg.reshape(batch_size, -1))
+        return torch.tensor(generated_eeg).view(batch_size, -1, 1)
 
     def _save_model(self, epoch):
         if self.model_save_path is None:

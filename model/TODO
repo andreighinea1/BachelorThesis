@@ -17,6 +17,7 @@
         -> TODO: Add a SWOT
 
     - EXTRAS:
+        -> TODO: Add "SleepEGAN: A GAN-enhanced ensemble deep learning model for imbalanced classification of sleep stages"
         -> TODO: Add tensorboard training results (plots).
             -> Modify to be at higher resolution.
         -> TODO: Photos
