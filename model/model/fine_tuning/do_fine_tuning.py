@@ -23,6 +23,7 @@ class FineTuning:
             # The trained encoders and projectors
             ET: TimeFrequencyEncoder, EF: TimeFrequencyEncoder, PT: CrossSpaceProjector, PF: CrossSpaceProjector,
             *,
+            num_channels=62,
             device=None, finetuning_model_save_dir="model_params/finetuning",
             log_dir: Optional[str] = "runs/finetuning",  # Added log_dir
             # Parameters from the paper
@@ -75,7 +76,7 @@ class FineTuning:
         ).to(self.device)
 
         self.classifier = EmotionClassifier(
-            input_dim=62 * gcn_hidden_dims[-1],  # TODO: Make 62 a parameter for channel_count
+            input_dim=num_channels * gcn_hidden_dims[-1],
             hidden_dims=classifier_hidden_dims,
             output_dim=self.num_classes
         ).to(self.device)

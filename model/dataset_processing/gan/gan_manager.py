@@ -74,6 +74,33 @@ class GanManager:
             eeg_gan.train()
             self.eeg_gans.append(eeg_gan)
 
+    def load_gan_models(self, epoch):
+        for channel_index, channel_data in enumerate(self.eeg_separated_channels):
+            model_save_dir = f"{self.model_save_dir}/channel_{channel_index}_saved"
+            eeg_gan = EegGan(
+                channel_data,
+                generator_layers=self.generator_layers,
+                discriminator_layers=self.discriminator_layers,
+                use_full_lstm=self.use_full_lstm,
+                batch_size=self.batch_size,
+                lstm_dim=self.lstm_dim,
+                latent_dim=self.latent_dim,
+                epochs=self.epochs,
+                learning_rate_D=self.learning_rate_D,
+                learning_rate_G=self.learning_rate_G,
+                beta1=self.beta1,
+                beta2=self.beta2,
+                scheduler_patience_D=self.scheduler_patience_D,
+                scheduler_patience_G=self.scheduler_patience_G,
+                use_label_smoothing=self.use_label_smoothing,
+                model_save_dir=model_save_dir,
+                log_dir=None,
+                overwrite_training=False,
+                to_train=False,
+            )
+            eeg_gan.load_model(epoch)
+            self.eeg_gans.append(eeg_gan)
+
     def _generate_data_for_all_channels(self):
         augmented_channels = []
         for gan, channel_data in zip(self.eeg_gans, self.eeg_separated_channels):
