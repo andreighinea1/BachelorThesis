@@ -1,6 +1,8 @@
 numpy==1.26.4
 pandas==2.2.0
-tensorboard-pytorch
 tensorboard
 pygraphviz
 torchview
+moviepy==1.0.3
+screeninfo==0.8.1
+pydantic

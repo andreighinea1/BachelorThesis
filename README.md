@@ -2,6 +2,32 @@
 
 This guide will help you set up the environment for EEG Emotion Recognition using Miniconda, FFMPEG, cuDNN, and PyTorch.
 
+## Overview
+
+This project focuses on EEG emotion recognition through advanced machine learning techniques. It includes the following capabilities:
+
+- **Dataset Collection**: Using prepared `.mp4` videos categorized by emotions (negative, neutral, positive).
+- **Model Training and Evaluation**: Includes baseline training on the SEED dataset and custom dataset EmotionWave.
+- **GAN Implementation**: Utilizes GANs for data augmentation.
+
+All model code is located in the `model` directory, and paths mentioned will be relative to this directory.
+
+### EmotionWave Dataset
+
+For access to the EmotionWave dataset, you may contact the project owner at `andreidezvoltator@gmail.com` to request the dataset.
+
+## Prerequisites
+
+Before diving into the installation steps, ensure you have the following prerequisites:
+
+- Miniconda
+- FFMPEG
+- cuDNN
+- Git
+- PyCharm Professional with Jupyter Notebook extension (VSCode is also possible but not covered here)
+
+Instead of using Conda, you may also use a Python virtual environment, but the guide will focus on Conda.
+
 ## 1. Clone the Repository
 
 First, clone the repository to your local machine using Git.
@@ -22,7 +48,6 @@ Download the Miniconda installer for Linux and run the following commands in you
 ```sh
 bash Miniconda3-latest-Linux-x86_64.sh
 ```
-
 Follow the prompts to complete the installation.
 
 ## 3. Install FFMPEG
@@ -100,4 +125,34 @@ Ensure you are in the activated conda environment and install the other required
 pip install -r requirements.txt
 ```
 
-You have now set up your environment for EEG Emotion Recognition. If you encounter any issues, refer to the official documentation of the respective tools or libraries.
+## Project Capabilities
+
+### Dataset Collection
+
+1. **Prepare Videos**:
+   - Place `.mp4` videos in `dataset_collection/videos/{EMOTION}` directories, with `{EMOTION}` being one of `negative, neutral, positive`. Name the videos as `1.mp4`, `2.mp4`, `3.mp4`, etc.
+
+2. **Run Jupyter Notebook**:
+   - Open and run `dataset_collection/notebook_dataset_collection.ipynb`.
+   - This notebook concatenates the videos for each emotion and creates segments (choose segment length, default is 4 minutes).
+   - Uncomment the line `# experiment.run_experiment()` to show the video and experiment setup.
+
+### Model Training and Evaluation
+
+- **SEED Dataset**:
+   - Use `notebook.ipynb` to load the SEED Dataset, perform data augmentation, pre-training, fine-tuning, and evaluate the model.
+
+- **Custom Dataset (EmotionWave)**:
+   - Use `notebook_my_dataset_processing.ipynb` to load the EmotionWave dataset, run GANs for each channel, perform data augmentation, pre-training, fine-tuning, and evaluate the model.
+   - Uncomment the line `# gan_manager.initialize_and_train_gans()` to train GANs. By default, GANs are loaded with `gan_manager.load_gan_models(epochs)`.
+
+- **Hyperparameter Tuning**:
+   - Use `notebook_testing_values.ipynb` for hyperparameter tuning to find the best values for training the model.
+
+## Development Environment
+
+For development, it's recommended to use PyCharm Professional with the Jupyter Notebook extension. If you prefer using VSCode, it is possible but not covered in this guide.
+
+---
+
+You have now set up your environment and are ready to work on EEG Emotion Recognition. If you encounter any issues, refer to the official documentation of the respective tools or libraries.
