@@ -1,10 +1,12 @@
 # EEG Emotion Recognition Setup
 
+This project is the source code for the bachelor thesis titled `EmotionWave: GAN-AUGMENTED CUSTOM DATASET USING EEG HEADSET FOR EMOTION RECOGNITION`.
 This guide will help you set up the environment for EEG Emotion Recognition using Miniconda, FFMPEG, cuDNN, and PyTorch.
 
 ## Overview
 
-This project focuses on EEG emotion recognition through advanced machine learning techniques. It includes the following capabilities:
+This project focuses on EEG emotion recognition through advanced machine learning techniques.
+It includes the following capabilities:
 
 - **Dataset Collection**: Using prepared `.mp4` videos categorized by emotions (negative, neutral, positive).
 - **Model Training and Evaluation**: Includes baseline training on the SEED dataset and custom dataset EmotionWave.
@@ -152,6 +154,10 @@ pip install -r requirements.txt
 ## Development Environment
 
 For development, it's recommended to use PyCharm Professional with the Jupyter Notebook extension. If you prefer using VSCode, it is possible but not covered in this guide.
+
+## License
+
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
 
 ---
 
