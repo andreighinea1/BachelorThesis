@@ -1,6 +1,7 @@
 **/~$*.xlsx
-model/datasets/**
-model/model_params
-model/_model_results
+model/datasets
 model/dataset_collection/**/*.mp3
 model/dataset_collection/**/*.mp4
+model/model_params
+model/_model_results
+model/__jupyter_commands
