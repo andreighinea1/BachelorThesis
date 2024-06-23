@@ -1,5 +1,6 @@
 **/~$*.xlsx
 model/datasets/**
-model/model_params/**/*.pt
+model/model_params
+model/_model_results
 model/dataset_collection/**/*.mp3
 model/dataset_collection/**/*.mp4
