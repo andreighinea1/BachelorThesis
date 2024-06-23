@@ -1,6 +1,8 @@
 # EEG Emotion Recognition Setup
 
 This project is the source code for the bachelor thesis titled `EmotionWave: GAN-AUGMENTED CUSTOM DATASET USING EEG HEADSET FOR EMOTION RECOGNITION`.
+You can find the repository on GitHub [here](https://github.com/andreighinea1/BachelorThesis).
+
 This guide will help you set up the environment for EEG Emotion Recognition using Miniconda, FFMPEG, cuDNN, and PyTorch.
 
 ## Overview
@@ -60,11 +62,11 @@ Visit the [FFmpeg download page](https://ffmpeg.org/download.html) to get the la
 1. Download the release for Windows.
 2. Extract the downloaded file.
 3. Add the `bin` directory to your system's PATH environment variable:
-   - Open the Start Search, type in "env", and select "Edit the system environment variables".
-   - Click on the "Environment Variables" button.
-   - Under "System variables", find the `Path` variable and click "Edit".
-   - Click "New" and add the path to the `bin` directory of your extracted FFMPEG folder.
-   - Click "OK" to save and exit.
+    - Open the Start Search, type in "env", and select "Edit the system environment variables".
+    - Click on the "Environment Variables" button.
+    - Under "System variables", find the `Path` variable and click "Edit".
+    - Click "New" and add the path to the `bin` directory of your extracted FFMPEG folder.
+    - Click "OK" to save and exit.
 
 ### Linux
 1. Download the release for Linux.
@@ -109,11 +111,11 @@ source activate eeg_env
 Visit the [PyTorch Get Started page](https://pytorch.org/get-started/locally/).
 
 1. Select the following options:
-   - **PyTorch Build**: Stable (2.3.1)
-   - **Your OS**: Choose your operating system
-   - **Package**: Conda
-   - **Language**: Python
-   - **Compute Platform**: CUDA 12.1
+    - **PyTorch Build**: Stable (2.3.1)
+    - **Your OS**: Choose your operating system
+    - **Package**: Conda
+    - **Language**: Python
+    - **Compute Platform**: CUDA 12.1
 
 2. Copy the provided installation command and run it in your terminal. For example:
     ```sh
@@ -132,24 +134,24 @@ pip install -r requirements.txt
 ### Dataset Collection
 
 1. **Prepare Videos**:
-   - Place `.mp4` videos in `dataset_collection/videos/{EMOTION}` directories, with `{EMOTION}` being one of `negative, neutral, positive`. Name the videos as `1.mp4`, `2.mp4`, `3.mp4`, etc.
+    - Place `.mp4` videos in `dataset_collection/videos/{EMOTION}` directories, with `{EMOTION}` being one of `negative, neutral, positive`. Name the videos as `1.mp4`, `2.mp4`, `3.mp4`, etc.
 
 2. **Run Jupyter Notebook**:
-   - Open and run `dataset_collection/notebook_dataset_collection.ipynb`.
-   - This notebook concatenates the videos for each emotion and creates segments (choose segment length, default is 4 minutes).
-   - Uncomment the line `# experiment.run_experiment()` to show the video and experiment setup.
+    - Open and run `dataset_collection/notebook_dataset_collection.ipynb`.
+    - This notebook concatenates the videos for each emotion and creates segments (choose segment length, default is 4 minutes).
+    - Uncomment the line `# experiment.run_experiment()` to show the video and experiment setup.
 
 ### Model Training and Evaluation
 
 - **SEED Dataset**:
-   - Use `notebook.ipynb` to load the SEED Dataset, perform data augmentation, pre-training, fine-tuning, and evaluate the model.
+    - Use `notebook.ipynb` to load the SEED Dataset, perform data augmentation, pre-training, fine-tuning, and evaluate the model.
 
 - **Custom Dataset (EmotionWave)**:
-   - Use `notebook_my_dataset_processing.ipynb` to load the EmotionWave dataset, run GANs for each channel, perform data augmentation, pre-training, fine-tuning, and evaluate the model.
-   - Uncomment the line `# gan_manager.initialize_and_train_gans()` to train GANs. By default, GANs are loaded with `gan_manager.load_gan_models(epochs)`.
+    - Use `notebook_my_dataset_processing.ipynb` to load the EmotionWave dataset, run GANs for each channel, perform data augmentation, pre-training, fine-tuning, and evaluate the model.
+    - Uncomment the line `# gan_manager.initialize_and_train_gans()` to train GANs. By default, GANs are loaded with `gan_manager.load_gan_models(epochs)`.
 
 - **Hyperparameter Tuning**:
-   - Use `notebook_testing_values.ipynb` for hyperparameter tuning to find the best values for training the model.
+    - Use `notebook_testing_values.ipynb` for hyperparameter tuning to find the best values for training the model.
 
 ## Development Environment
 
