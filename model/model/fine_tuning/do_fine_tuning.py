@@ -144,6 +144,7 @@ class FineTuning:
             base_desc = f"Doing evaluation at Epoch {epoch}"
 
         all_ok_predictions = None
+        all_predictions = None
         correct, total = 0, 0
         eval_loss = 0
         with torch.no_grad(), tqdm(self.data_loader_eval, desc=base_desc, leave=False) as pbar:
@@ -173,7 +174,10 @@ class FineTuning:
                 if all_accuracies:
                     if all_ok_predictions is None:
                         all_ok_predictions = []
+                    if all_predictions is None:
+                        all_predictions = []
                     all_ok_predictions.append(predictions == y)
+                    all_predictions.append(predictions)
 
             self.ET.train()
             self.EF.train()
@@ -184,10 +188,11 @@ class FineTuning:
 
         if all_accuracies:
             all_ok_predictions = torch.cat(all_ok_predictions)
+            all_predictions = torch.cat(all_predictions)
 
         eval_accuracy = correct / total
         avg_eval_loss = eval_loss / self.eval_batch_size
-        return all_ok_predictions, eval_accuracy, avg_eval_loss
+        return all_predictions, all_ok_predictions, eval_accuracy, avg_eval_loss
 
     def train(self, *, update_after_every_epoch=True, force_train=False):
         if not self.to_train:
