@@ -39,7 +39,7 @@ class FineTuning:
         if classifier_hidden_dims is None:
             classifier_hidden_dims = [1024, 128]
 
-        self.train_batch_size = len(data_loader)
+        self.train_batch_size = len(data_loader) if data_loader is not None else 0
         self.eval_batch_size = len(data_loader_eval)
 
         self.data_loader = data_loader
@@ -137,10 +137,16 @@ class FineTuning:
 
         return epoch_loss / self.train_batch_size
 
-    def do_eval_epoch(self, epoch):
+    def do_eval_epoch(self, epoch=None, *, all_accuracies=False):
+        if epoch is None:
+            base_desc = "Doing evaluation"
+        else:
+            base_desc = f"Doing evaluation at Epoch {epoch}"
+
+        all_ok_predictions = None
         correct, total = 0, 0
         eval_loss = 0
-        with torch.no_grad(), tqdm(self.data_loader_eval, desc=f"Epoch {epoch}", leave=False) as pbar:
+        with torch.no_grad(), tqdm(self.data_loader_eval, desc=base_desc, leave=False) as pbar:
             self.ET.eval()
             self.EF.eval()
             self.PT.eval()
@@ -158,7 +164,16 @@ class FineTuning:
                 total += y.size(0)
 
                 # Update tqdm progress bar with the current loss
-                pbar.set_description_str(f"Epoch {epoch}, Loss: {L.item():.4f}")
+                pbar.set_description_str(
+                    f"{base_desc} -> "
+                    f"Current Loss: {eval_loss / total:.4f}, "
+                    f"Current Accuracy: {correct / total:.2%}"
+                )
+
+                if all_accuracies:
+                    if all_ok_predictions is None:
+                        all_ok_predictions = []
+                    all_ok_predictions.append(predictions == y)
 
             self.ET.train()
             self.EF.train()
@@ -167,9 +182,12 @@ class FineTuning:
             self.gcn.train()
             self.classifier.train()
 
+        if all_accuracies:
+            all_ok_predictions = torch.cat(all_ok_predictions)
+
         eval_accuracy = correct / total
         avg_eval_loss = eval_loss / self.eval_batch_size
-        return eval_accuracy, avg_eval_loss
+        return all_ok_predictions, eval_accuracy, avg_eval_loss
 
     def train(self, *, update_after_every_epoch=True, force_train=False):
         if not self.to_train:
@@ -191,7 +209,7 @@ class FineTuning:
                 self._save_model(epoch)
 
                 # Evaluate accuracy
-                eval_accuracy, avg_eval_loss = self.do_eval_epoch(epoch)
+                _, eval_accuracy, avg_eval_loss = self.do_eval_epoch(epoch)
 
                 epoch_duration = time.time() - epoch_start_time
 
@@ -329,12 +347,13 @@ class FineTuning:
         }
         torch.save(model_dicts, f"{self.model_save_path}__epoch_{epoch}.pt")
 
-    def load_model(self, epoch):
+    def load_model(self, epoch, *, allow_logs=True):
         if self.model_final_save_path is None:
             raise Exception("Tried loading model with no path provided!")
 
         model_path = f"{self.model_final_save_path}__epoch_{epoch}.pt"
-        print(f"Trying to load model from {model_path}")
+        if allow_logs:
+            print(f"Trying to load model from {model_path}")
 
         model_dicts = torch.load(model_path)
         model_state_dict = model_dicts["model_state_dict"]
@@ -350,4 +369,5 @@ class FineTuning:
             self.classifier.load_state_dict(model_dicts["classifier_state_dict"])
 
         self._trained = True
-        print(f"Loaded model from {model_path}")
+        if allow_logs:
+            print(f"Loaded model from {model_path}")
