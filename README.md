@@ -157,6 +157,14 @@ pip install -r requirements.txt
 
 For development, it's recommended to use PyCharm Professional with the Jupyter Notebook extension. If you prefer using VSCode, it is possible but not covered in this guide.
 
+## Project Paper
+
+A detailed scientific paper documenting the methodology, results, and discussion for this thesis is included in the repository:
+
+* [`Ghinea_AndreiRobert_Documentation_CTIEN_Licence - no signature.pdf`](Paper/Ghinea_AndreiRobert_Documentation_CTIEN_Licence%20-%20no%20signature.pdf) — *Final thesis with all figures, findings, and references.*
+
+The original LyX source file ([`BachelorThesis.lyx`](Paper/BachelorThesis.lyx)) is also provided in the same directory.
+
 ## License
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
